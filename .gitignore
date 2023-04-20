@@ -1,0 +1,12 @@
+.benchmarks
+.pytest_cache
+*__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.txt
+*test*
+*ai_*
+*wolve*
+*.env*
+*DS_Store

@@ -1,0 +1,2 @@
+# TerminalNotSupportedError
+# OsNotSupportedError
