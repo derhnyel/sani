@@ -1,7 +1,14 @@
-# Sani-Ai
+# Sani 🤖⚙️😎
 
-An advanced AI-powered tool for building better softwares.
-Its name is derived from the Hausa word for knowledge, reflecting its deep understanding of programming languages and its ability to quickly analyze code for issues and provide the best solution there is.
+Hello there, I am `Sani`:
+An advanced AI-powered tool for building better softwares. I integrate AI directly into your codebase by making it blend in with your prefered language syntax.
+My name is derived from the `Hausa` word for knowledge, as i have access to a wide range of resources for energizing your codebase with ai also, I can analyze any codebase for issues and provide the best solution there is.
+
+## Support Languages
+
+- Python
+
+## Installation
 
 ## Debugger
 
@@ -115,7 +122,7 @@ I am here for testing the fix mode
 
 ## Features Update
 
-- Add a regex function that takes a description or what to extract and a sample string where that can be found and returns a list of matches.
+- ♻️ Add a regex function that takes a description or what to extract and a sample string where that can be found and returns a list of matches.
 
 ```python
 import sani
@@ -125,7 +132,7 @@ sani.regex(
 )  # returns ['testing', 'ending']
 ```
 
-- Add ai functions.
+- ♻️ Add ai functions.
 
 ```python
 import sani
@@ -137,6 +144,12 @@ def add_two_numbers(a,b):
 # Gives you an output from the function
 ```
 
-- Add a prompt builder ... build prompts with suggestions from pylint/flack8 and comments
-- Tui /cli build with textual.
-- Add gpt support.
+- ⚙️ Add a prompt builder ... build prompts with suggestions from pylint/flack8 and comments
+- 🖥️ Tui /cli build with textual.
+- ⚙️ Add gpt support.
+
+## Inspirations
+
+- [Auto-Gpt]()
+- [Mavin-AI]()
+- [Warp-Ai]()
