@@ -44,7 +44,8 @@ class Mode(str, Enum):
 
 config = Config()
 logger = get_logger(__name__)
-raise2logs = config.raise2logs
+# RAISE2LOGS = config.raise2logs
+# DEACTIVATE = config.deactivate
 
 
 class Debugger(Object):
@@ -124,7 +125,7 @@ class Debugger(Object):
         """
 
         if self.deactivate:
-            logger.debug("DEBUGGer='deactivated'")
+            logger.debug("DEBUGGER='deactivated'")
             return
         self.__terminal_type = terminal_type
         self.args = args
@@ -172,7 +173,7 @@ class Debugger(Object):
         # QUESTION: how to get the terminal pid and kill it when the script ends?
         # QUESTION: how does the script processes communicate with the terminal process?
 
-        logger.debug("DEBUGGer='activated'")
+        logger.debug("DEBUGGER='activated'")
 
     def regex(self, description: str, sample_text: str):
         """
