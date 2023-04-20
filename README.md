@@ -31,7 +31,7 @@ Sample Usage:
 ```python
 from sani.debugger import Debugger
 
-debug = Debugger(stdout="test.txt", channel="io")
+debug = Debugger(__name__,stdout="test.txt", channel="io")
 debug.breakpoint(mode="test", subject="build an automatic scraper")
 
 

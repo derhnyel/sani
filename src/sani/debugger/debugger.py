@@ -5,7 +5,7 @@ import multiprocessing
 from sani.utils.custom_types import Dict, List, Any, Tuple, NamedTuple, types
 from sani.core.channel import Channel, BaseCommChannel
 import sys
-from sani.core.linter import Linter, BaseLinter
+from sani.debugger.linter import Linter, BaseLinter
 from sani.core.ops import (
     OsProcess,
     RuntimeInfo,
@@ -17,7 +17,7 @@ from sani.core.ops import (
 import json
 import traceback
 import re
-from sani.core.script import Scripts, ast
+from sani.debugger.script import Scripts, ast
 from sani.utils.utils import Object
 from sani.core.config import Config
 import atexit
@@ -46,6 +46,7 @@ config = Config()
 logger = get_logger(__name__)
 # RAISE2LOGS = config.raise2logs
 # DEACTIVATE = config.deactivate
+multiprocessing
 
 
 class Debugger(Object):
@@ -81,24 +82,36 @@ class Debugger(Object):
 
     def __new__(
         cls,
-        *args,
+        __name__,
         terminal_type: str = None,
         channel: str = None,
         linter: str = None,
+        *args,
         **kwargs,
     ):
         """
         Creates a singleton object, if it is not created,
         or else returns the previous singleton object
         """
+        if __name__ != "__main__" and not config.deactivate:
+            cls.deactivate = True
+        elif __name__ == "__main__" and not config.deactivate:
+            cls.deactivate = False
         if not hasattr(cls, "instance"):
             cls.instance = super(Debugger, cls).__new__(
-                cls, terminal_type, channel, linter, *args, **kwargs
+                cls,
+                __name__,
+                terminal_type=terminal_type,
+                channel=channel,
+                linter=linter,
+                *args,
+                **kwargs,
             )
         return cls.instance
 
     def __init__(
         self,
+        __name__,
         terminal_type: str = None,
         channel: str = None,
         linter: str = None,
@@ -189,11 +202,11 @@ class Debugger(Object):
         deactivate = False
         if not self.__caller_module:
             raise Exception("Unable to locate caller module.")
-        if (
-            self.__caller_module.__name__ != "__main__"
-        ):  # if '__main__' not in sys.modules:
-            deactivate = True
-            # raise DebuggerImportError("Debugger must be imported in the main script.")
+        # if (
+        #     self.__caller_module.__name__ != "__main__"
+        # ) or "__main__" not in sys.modules:
+        #     deactivate = True
+        #     # raise DebuggerImportError("Debugger must be imported in the main script.")
         if (
             self.__terminal_type
             and self.__terminal_type not in TerminalCommand.__dict__.get("_member_map_")
