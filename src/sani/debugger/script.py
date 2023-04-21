@@ -5,7 +5,7 @@ import astor
 import linecache
 
 
-class Scripts:  # TODO: Rename so it can support both scripts and ast object methods also io operations
+class Scripts:
     """
     Utility class to get a script information/attributes
     """
@@ -28,12 +28,8 @@ class Scripts:  # TODO: Rename so it can support both scripts and ast object met
         Parameters:
             script (str): Source script.
         """
-        try:
-            return ast.parse(script)
-        except IndentationError as e:
-            raise Exception(
-                "Please check the code block you are trying to debug. and select a valid python block"
-            )
+
+        return ast.parse(script)
 
     @staticmethod
     def get_script_from_ast(ast: ast.AST) -> str:

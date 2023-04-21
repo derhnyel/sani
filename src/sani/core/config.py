@@ -9,11 +9,11 @@ class Config:
     """Configuration for the application."""
 
     debug: bool = False
-    deactivate: bool = os.getenv("DEBUGGY_DEACTIVATE", False)
+    deactivate: bool = os.getenv("DEBUGGER_DEACTIVATE", False)
     runtime_info: RuntimeInfo = RuntimeInfo()
-    linter: str = os.getenv("DEBUGGY_LINTER", "pylint")  # pylint|flake8|disable
+    linter: str = os.getenv("DEBUGGER_LINTER", "pylint")  # pylint|flake8|disable
     linter_max_line_length: int = int(os.getenv("DEBUGGY_LINTER_MAX_LINE_LENGTH", 120))
-    channel: str = os.getenv("DEBUGGY_CHANNEL", "io")  # io|rmq|redis
+    channel: str = os.getenv("DEBUGGER_CHANNEL", "io")  # io|rmq|redis
     log_level = os.getenv("DEBUGGY_LOG_LEVEL", "DEBUG")
     default_ostty_command: Dict[Os, TerminalCommand] = field(
         default_factory=lambda: {
