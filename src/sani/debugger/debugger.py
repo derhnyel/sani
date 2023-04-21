@@ -25,6 +25,12 @@ import atexit
 from enum import Enum
 
 # import signal  # https://docs.python.org/3/library/signal.html Handle debugger raises and keyboard interrupt errors
+# https://coderzcolumn.com/tutorials/python/traceback-how-to-extract-format-and-print-error-stack-traces-in-python
+# https://pymotw.com/2/cgitb/index.html#module-cgitb // https://pymotw.com/2/traceback/
+
+import cgitb
+
+
 from sani.utils.logger import get_logger
 
 
@@ -38,15 +44,12 @@ class Mode(str, Enum):
     test = "test"
     improve = "improve"
     ai_function = "ai_fn"
-    analyze = "analyze"
     regex = "regex"
+    analyze = "analyze"
 
 
 config = Config()
 logger = get_logger(__name__)
-# RAISE2LOGS = config.raise2logs
-# DEACTIVATE = config.deactivate
-multiprocessing
 
 
 class Debugger(Object):
@@ -62,21 +65,18 @@ class Debugger(Object):
     __interactive_shell_file_format: Dict[
         str, str
     ] = config.interactive_shell_file_format
-    __deactivate_hook: bool = config.deactivate_exception_hooks
     deactivate: bool = config.deactivate
-
     runtime_info: RuntimeInfo = config.runtime_info
     script_utils: Scripts = Scripts
     process_utils: OsProcess = OsProcess()
     watch_logs: Dict = dict()
     channel: BaseCommChannel = None
-    quick_dispatcher_modes: List[Mode] = [
+    instant_modes: List[Mode] = [
         Mode.improve,
         Mode.document,
-        Mode.ai_function,
         Mode.analyze,
     ]
-    lifecycle_dispatcher_modes: List[Mode] = [Mode.fix, Mode.test]
+    atexit_modes: List[Mode] = [Mode.fix, Mode.test]
     # main_thread: threading.Thread = threading.main_thread()
     # main_process: multiprocessing.Process = multiprocessing.current_process()
 
@@ -93,10 +93,29 @@ class Debugger(Object):
         Creates a singleton object, if it is not created,
         or else returns the previous singleton object
         """
-        if __name__ != "__main__" and not config.deactivate:
+
+        if terminal_type and terminal_type not in TerminalCommand.__dict__.get(
+            "_member_map_"
+        ):
+            cls.deactivate = True
+            logger.error = f"{terminal_type} Terminal Not Supported by Debugger."
+        elif cls.runtime_info.os not in Os.__dict__.get("_value2member_map_"):
+            cls.deactivate = True
+            logger.error = (
+                f"{cls.runtime_info.os} Operating System Not Supported by Debugger."
+            )
+        elif linter and linter not in Linter.__dict__.get("_member_map_"):
+            cls.deactivate = True
+            logger.error = f"{linter} Linter Not Supported by Debugger."
+        elif channel and channel not in Channel.__dict__.get("_member_map_"):
+            cls.deactivate = True
+            logger.error = f"{channel} Channel Not Supported by Debugger."
+        elif __name__ != "__main__" and not config.deactivate:
+            logger.error("Debugger can only be used in __main__ module.")
             cls.deactivate = True
         elif __name__ == "__main__" and not config.deactivate:
             cls.deactivate = False
+
         if not hasattr(cls, "instance"):
             cls.instance = super(Debugger, cls).__new__(
                 cls,
@@ -121,6 +140,7 @@ class Debugger(Object):
         """
         Initialize the Debugger class with the following parameters:
             Parameters:
+                __name__ (string): The name of the module.
                 terminal_type (string): The terminal type to spawn a new terminal session.
                 channel (string): The channel to use for communication between the debugger and cli-engine ie. io|socket
                 linter (string): The linter to use for linting the python script. ie. pylint|flake8|disable
@@ -156,8 +176,6 @@ class Debugger(Object):
             self.runtime_info.get_stack_caller_frame().filename
         )
         if self.__check_run():
-            self.deactivate = True
-            logger.error("DEBBUGY is not supported in this runtime environment.")
             return
         # self.__calling_module: Tuple[
         #     str, types.ModuleType
@@ -178,56 +196,29 @@ class Debugger(Object):
         # Enable the fault handler: install handlers for the SIGSEGV, SIGFPE, SIGABRT, SIGBUS and SIGILL signals to dump the Python traceback. If all_threads is True, produce tracebacks for every running thread. Otherwise, dump only the current thread.
         # self.__engine: NamedTuple = self.__exec_engine()
         # print(self.__engine)
-        if not self.__deactivate_hook:
-            sys.excepthook = threading.excepthook = Debugger.handle_exception
-            atexit.register(Debugger.exit_handler)
-
+        sys.excepthook = threading.excepthook = Debugger.handle_exception
+        atexit.register(Debugger.exit_handler)
         # TODO: launch the terminal on init and connect to its stderr and stdin pipes .. so commands can be sent to it from anywhere
         # QUESTION: how to get the terminal pid and kill it when the script ends?
         # QUESTION: how does the script processes communicate with the terminal process?
-
         logger.debug("DEBUGGER='activated'")
-
-    def regex(self, description: str, sample_text: str):
-        """
-        Returns a compiled regular expression object.
-        """
-        # Move out of this class and into a separate class
-        # Return the ai results of matches if found else return None
 
     def __check_run(self) -> bool:
         """
         Check caller script runtime details and raise errors if not supported
         """
-        deactivate = False
-        if not self.__caller_module:
-            raise Exception("Unable to locate caller module.")
-        # if (
-        #     self.__caller_module.__name__ != "__main__"
-        # ) or "__main__" not in sys.modules:
-        #     deactivate = True
-        #     # raise DebuggerImportError("Debugger must be imported in the main script.")
-        if (
-            self.__terminal_type
-            and self.__terminal_type not in TerminalCommand.__dict__.get("_member_map_")
+        basename = os.path.basename(self.__caller_filename).lower()
+        if not self.__caller_module or any(
+            tty_format
+            for tty_format in self.__interactive_shell_file_format
+            if tty_format in self.__caller_filename
+            or (basename == self.__interactive_shell_file_format[tty_format].lower())
         ):
-            raise Exception(
-                f"{self.__terminal_type} Terminal Not Supported by Debugger."
+            logger.error(
+                "Unable to locate caller module. Debugger does not support interactive terminal like ipython, idle, bpython, reinteract."
             )
-        if self.runtime_info.os not in Os.__dict__.get("_value2member_map_"):
-            raise Exception(
-                f"{self.runtime_info.os} Operating System Not Supported by Debugger."
-            )
-        for tty_format in self.__interactive_shell_file_format:
-            if (
-                tty_format in self.__caller_filename
-                or os.path.basename(self.__caller_filename).lower()
-                == self.__interactive_shell_file_format[tty_format].lower()
-            ):
-                raise Exception(
-                    "Debugger does not support interactive terminal like ipython, idle, bpython, reinteract."
-                )
-        return deactivate
+            self.deactivate = True
+        return self.deactivate
 
     def __check_status(function: types.FunctionType) -> Any:
         """
@@ -290,14 +281,14 @@ class Debugger(Object):
                 logger.debug(
                     f"method='WRAP'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
                 )
-                if mode in self.quick_dispatcher_modes and sync:
+                if mode in self.instant_modes and sync:
                     Debugger.dispatch(mode, context, set_flag=True)
                 exc_output = (
                     asyncio.run(function(*args, **kwargs))
                     if check
                     else function(*args, **kwargs)
                 )
-                if mode in self.lifecycle_dispatcher_modes and sync:
+                if mode in self.atexit_modes and sync:
                     # after sending ... set the flag to True for non-atexit dispatches
                     if mode == Mode.fix:
                         context["prompt"]["referer"] = Mode.fix.value
@@ -328,7 +319,7 @@ class Debugger(Object):
             startline,
             subject=subject,
         )
-        if sync and mode in self.quick_dispatcher_modes:
+        if sync and mode in self.instant_modes:
             Debugger.dispatch(mode, context, set_flag=True)
         logger.debug(
             f"method='WITH'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
@@ -398,7 +389,7 @@ class Debugger(Object):
             and endline <= self.__caller_source.lenght
         ):
             context, sync, block = self.build(mode, startline, subject, endline=endline)
-            if sync and mode in self.quick_dispatcher_modes:
+            if sync and mode in self.instant_modes:
                 Debugger.dispatch(mode, context, set_flag=True)
 
             logger.debug(
@@ -406,7 +397,7 @@ class Debugger(Object):
             )
 
         else:
-            raise ValueError(
+            logger.error(
                 f"Debugger can only debug a source script between line 1 and {self.__caller_source.lenght}."
             )
 
@@ -456,7 +447,7 @@ class Debugger(Object):
             style="syntax",
             syntax_format="debugger_end_breakpoint",
         )
-        if sync and mode in self.quick_dispatcher_modes:
+        if sync and mode in self.instant_modes:
             Debugger.dispatch(mode, context, set_flag=True)
         logger.debug(
             f"method='BREAKPOINT'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
@@ -603,7 +594,7 @@ class Debugger(Object):
         """
         if (
             (mode in [Mode.test] and context.get("execution")["status"] == "success")
-            or (mode in Debugger.quick_dispatcher_modes)
+            or (mode in Debugger.instant_modes)
             or (
                 mode in [Mode.fix]
                 and context.get("prompt")["referer"] == Mode.fix
@@ -750,6 +741,8 @@ class Debugger(Object):
             syntax_format,
             replace_syntax,
         )
+        if not block.block:
+            return {}, False, block
 
         # build context with code block
         context = self.__build_context(
@@ -787,49 +780,6 @@ class Debugger(Object):
         Returns:
             block (NamedTuple): Code block.
         """
-        if not endline:
-            endline = self.__caller_source.lenght
-            if style == "indent":
-                lines = self.__caller_source.lines
-                first_line = lines[startline - 1]
-                strips = len(first_line) - len(first_line.lstrip())
-                # Get the endline of a code block using the indent style
-                source_script = ("").join(lines[startline - 1 : -1])
-                block_ast: ast.AST = (
-                    self.script_utils.get_ast(source_script).body[body_index]
-                    if body_index
-                    else self.script_utils.get_ast(source_script)
-                )
-                block = self.script_utils.get_script_from_ast(block_ast)
-                for line in range(startline + 1, endline):
-                    if len(lines[line]) - len(lines[line].lstrip()) == strips:
-                        endline = line
-                        break
-            elif style == "syntax":
-                lines = self.__source_lines
-                for line in range(startline, endline):
-                    if syntax_format in lines[line]:
-                        # Maintain breakpoints end syntax.
-                        # Remove so another breakpoint method would find its end syntax
-                        if replace_syntax:
-                            lines.pop(line)
-                            lines.insert(
-                                line, f"Debugger inserted placeholder in line {line+1}"
-                            )
-                        endline = line + 1
-                        break
-                block = ("").join(
-                    self.__caller_source.lines[startline - 1 : endline - 1]
-                )
-                block_ast: ast.AST = self.script_utils.get_ast(block)
-            block_ast_dump: str = ast.dump(block_ast)
-            block_comments: str = self.script_utils.get_comments(block_ast)
-
-        else:
-            block = ("").join(self.__caller_source.lines[startline - 1 : endline - 1])
-            block_ast = self.script_utils.get_ast(block)
-            block_ast_dump = ast.dump(block_ast)
-            block_comments = self.script_utils.get_comments(block_ast)
         block_object = NamedTuple(
             "Block",
             [
@@ -840,7 +790,62 @@ class Debugger(Object):
                 ("block_comments", str),
             ],
         )
-        return block_object(block, startline, endline, block_ast_dump, block_comments)
+        try:
+            if not endline:
+                endline = self.__caller_source.lenght
+
+                if style == "indent":
+                    lines = self.__caller_source.lines
+                    first_line = lines[startline - 1]
+                    strips = len(first_line) - len(first_line.lstrip())
+                    # Get the endline of a code block using the indent style
+                    source_script = ("").join(lines[startline - 1 : -1])
+                    block_ast: ast.AST = (
+                        self.script_utils.get_ast(source_script).body[body_index]
+                        if body_index
+                        else self.script_utils.get_ast(source_script)
+                    )
+                    block = self.script_utils.get_script_from_ast(block_ast)
+                    for line in range(startline + 1, endline):
+                        if len(lines[line]) - len(lines[line].lstrip()) == strips:
+                            endline = line
+                            break
+                elif style == "syntax":
+                    lines = self.__source_lines
+                    for line in range(startline, endline):
+                        if syntax_format in lines[line]:
+                            # Maintain breakpoints end syntax.
+                            # Remove so another breakpoint method would find its end syntax
+                            if replace_syntax:
+                                lines.pop(line)
+                                lines.insert(
+                                    line,
+                                    f"Debugger inserted placeholder in line {line+1}",
+                                )
+                            endline = line + 1
+                            break
+                    block = ("").join(
+                        self.__caller_source.lines[startline - 1 : endline - 1]
+                    )
+                    block_ast: ast.AST = self.script_utils.get_ast(block)
+                block_ast_dump: str = ast.dump(block_ast)
+                block_comments: str = self.script_utils.get_comments(block_ast)
+            else:
+                block = ("").join(
+                    self.__caller_source.lines[startline - 1 : endline - 1]
+                )
+                block_ast = self.script_utils.get_ast(block)
+                block_ast_dump = ast.dump(block_ast)
+                block_comments = self.script_utils.get_comments(block_ast)
+
+            return block_object(
+                block, startline, endline, block_ast_dump, block_comments
+            )
+        except IndentationError as e:
+            logger.error(
+                f"Block startline={startline} to endline={endline} has the incorrect python syntax within it. Please select a valid python syntax block. "
+            )
+            return block_object(None, startline, endline, None, None)
 
     def __build_context(
         self,
@@ -953,7 +958,7 @@ class Debugger(Object):
         )
         exit_code: int = os.system(command)
         if exit_code != 0:
-            raise Exception("Debugger failed to start")
+            logger.error("Cli-Engine failed to start")
         return engine(terminal_type, exit_code, command)
 
     @staticmethod
@@ -1058,7 +1063,8 @@ class Debugger(Object):
 # TODO: OPTIMIZE: Use the line number an intelligent parsing to get what variable name debugger was assign to on init
 # TODO: Use signals handlers
 # TODO: Configure signals for different os and terminals
-# TODO: HAndle invalid modes
+# TODO: Handle invalid modes
+# TODO: Introduce sani workspaces  ... Debugger checks if sani is running (???)(flag)(efficiency??) and if it use the default workspace or predifined workspace from config.(Work spaces can only be changed from config)
 # if exc_type and exc_value and traceback: are none then call the watch_logs and remove the latest item from the watch_logs for  fix mode
 # if exc_type and exc_value and traceback: are none then call the watch_logs and extract the test latest entry and dispatch for test mode
 # else get the watch log call the dispatch_on_error __exit__ works for modes that supoort watch (fix,test)
@@ -1156,3 +1162,7 @@ class Debugger(Object):
 #         #     signal.SIGUSR1: 30,
 #         #     signal.SIGUSR2: 31,
 #         # }
+
+
+
+
