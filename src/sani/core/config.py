@@ -1,15 +1,17 @@
 from dataclasses import dataclass, field
-import os
-from sani.core.ops import RuntimeInfo, Os, TerminalCommand
+from sani.core.ops import RuntimeInfo, Os, TerminalCommand, os
 from sani.utils.custom_types import Dict
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @dataclass
 class Config:
     """Configuration for the application."""
 
-    debug: bool = False
-    deactivate: bool = os.getenv("DEBUGGER_DEACTIVATE", False)
+    disable: bool = os.getenv("DEBUGGER_DEACTIVATE", False)
+    deactivate = disable
     runtime_info: RuntimeInfo = RuntimeInfo()
     linter: str = os.getenv("DEBUGGER_LINTER", "pylint")  # pylint|flake8|disable
     linter_max_line_length: int = int(os.getenv("DEBUGGY_LINTER_MAX_LINE_LENGTH", 120))

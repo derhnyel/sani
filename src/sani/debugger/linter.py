@@ -1,5 +1,4 @@
-from enum import Enum
-from abc import ABC, abstractmethod
+from sani.utils.custom_types import Enum, ABC, abstractmethod
 
 
 class BaseLinter(ABC):

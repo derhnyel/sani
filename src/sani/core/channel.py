@@ -1,7 +1,13 @@
-from abc import ABC, abstractmethod
-from sani.utils.custom_types import JsonType, NamedTuple, Tuple
-from enum import Enum
-from json import dumps
+from sani.utils.custom_types import (
+    JsonType,
+    Tuple,
+    Enum,
+    abstractmethod,
+    ABC,
+    io_object,
+    Dict,
+)
+from json import dumps, loads
 
 
 class BaseCommChannel(ABC):
@@ -78,12 +84,13 @@ class IoCommChannel(BaseCommChannel):
             }
         )
 
-    def send(self, message=None):
+    def send(self, message: Dict = None):
         """
         Send a message to the io comm channel
             Parameters:
                 message (string): message to be sent to the comm channel.
         """
+        message = dumps(message)
         self.redirect(stdout=True)
         if self.sys.stdout.writable():
             print(message, flush=True)
@@ -95,15 +102,15 @@ class IoCommChannel(BaseCommChannel):
         stdin = self.kwargs.get("stdin") or tempfile.NamedTemporaryFile()
         stdout = self.kwargs.get("stdout") or tempfile.NamedTemporaryFile()
         stderr = self.kwargs.get("stderr") or tempfile.NamedTemporaryFile()
-        self.stdin: Tuple[tempfile._TemporaryFileWrapper, NamedTuple] = (
+        self.stdin: Tuple[tempfile._TemporaryFileWrapper, io_object] = (
             stdin,
             self.get_io(stdin if isinstance(stdin, str) else stdin.name, mode="r"),
         )
-        self.stdout: Tuple[tempfile._TemporaryFileWrapper, NamedTuple] = (
+        self.stdout: Tuple[tempfile._TemporaryFileWrapper, io_object] = (
             stdout,
             self.get_io(stdout if isinstance(stdout, str) else stdout.name),
         )
-        self.stderr: Tuple[tempfile._TemporaryFileWrapper, NamedTuple] = (
+        self.stderr: Tuple[tempfile._TemporaryFileWrapper, io_object] = (
             stderr,
             self.get_io(stdout if isinstance(stdout, str) else stdout.name),
         )
@@ -144,12 +151,10 @@ class IoCommChannel(BaseCommChannel):
         self.sys.stdout = self.stdout[1].stream if stdout else self.default_stdout
         self.sys.stderr = self.stderr[1].stream if stderr else self.default_stderr
 
-    def get_io(self, path: str, mode: str = "w") -> NamedTuple:
-        # TODO: Move to a utils (config should house this value)
+    def get_io(self, path: str, mode: str = "w") -> io_object:
         """
         Get a Text input/output warpper object
         """
-        io_object = NamedTuple("IO", [("path", str), ("stream", self.TextIOWrapper)])
         io_stream: self.TextIOWrapper = open(
             path,
             mode,

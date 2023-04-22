@@ -1,15 +1,14 @@
 import psutil  # https://psutil.readthedocs.io/en/latest/
-from sani.utils.custom_types import List, Tuple
+from sani.utils.custom_types import List, Tuple, types, Enum
 import inspect
-from enum import Enum
 import time
 import sys
 import os
 import subprocess
-import types
 import distro
-import platform  # https://docs.python.org/3/library/platform.html
-import resource  # https://docs.python.org/3/library/resource.html
+
+# import platform  # https://docs.python.org/3/library/platform.html
+# import resource  # https://docs.python.org/3/library/resource.html
 
 
 class OsProcess:
