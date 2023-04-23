@@ -113,71 +113,66 @@ class Debugger(Object):
                     cls.disable = True
                 else:
                     cls.disable = False
+        if not cls.disable:
+            logger.debug("DEBUGGER='enabled'")
+            logger.debug(
+                f"Debugger is active in {name} module. Debugger is using {channel} channel and {linter} linter."
+            )
+            cls.script_utils: BaseScript = (
+                Script.__dict__.get(Enums.members).get(language).value()
+            )
+            channel: Channel = Channel.__dict__.get(Enums.members).get(
+                channel or config.channel
+            )
+            cls.channel: BaseCommChannel = channel.value(*args, **kwargs)
+            linter: Linter = Linter.__dict__.get(Enums.members).get(
+                linter or config.linter
+            )
+            cls.linter: BaseLinter = (
+                linter.value(*args, **kwargs) if linter.value else None
+            )
 
-        if not hasattr(cls, "instance"):
-            if not cls.disable:
-                logger.debug("DEBUGGER='enabled'")
-                logger.debug(
-                    f"Debugger is active in {name} module. Debugger is using {channel} channel and {linter} linter."
+            if not caller:
+                cls.__caller_module = cls.runtime_info.get_module(
+                    cls.runtime_info.get_stack()[-1][0]
                 )
-                cls.script_utils: BaseScript = (
-                    Script.__dict__.get(Enums.members).get(language).value()
+                cls.__caller_filename: str = (
+                    cls.runtime_info.get_stack_caller_frame().filename
                 )
-                channel: Channel = Channel.__dict__.get(Enums.members).get(
-                    channel or config.channel
+                cls.__caller_filepath: str = os.path.dirname(
+                    cls.__caller_module.__file__
                 )
-                cls.channel: BaseCommChannel = channel.value(*args, **kwargs)
-                linter: Linter = Linter.__dict__.get(Enums.members).get(
-                    linter or config.linter
+                cls.__caller: str = os.path.join(
+                    cls.__caller_filepath, cls.__caller_filename
                 )
-                cls.linter: BaseLinter = (
-                    linter.value(*args, **kwargs) if linter.value else None
-                )
-
-                if not caller:
-                    cls.__caller_module = cls.runtime_info.get_module(
-                        cls.runtime_info.get_stack()[-1][0]
-                    )
-                    cls.__caller_filename: str = (
-                        cls.runtime_info.get_stack_caller_frame().filename
-                    )
-                    cls.__caller_filepath: str = os.path.dirname(
-                        cls.__caller_module.__file__
-                    )
-                    cls.__caller: str = os.path.join(
-                        cls.__caller_filepath, cls.__caller_filename
-                    )
-
-                else:
-                    cls.__caller: Path = caller
-                if language == Language.python:
-                    cls.__caller_source: script = cls.script_utils.get_script(
-                        cls.__caller
-                    )
-                    cls.__script: script = cls.script_utils.get_attributes(
-                        cls.__caller_source.string
-                    )
-                    cls.__caller_comments = cls.__script.comments
-                else:
-                    with open(cls.__caller, "r", encoding="utf-8") as code:
-                        cls.__caller_source: script = cls.script_utils.get_attributes(
-                            code.read()
-                        )
-                        cls.__caller_comments = cls.__caller_source.comments
-                cls.__caller_pid: int = cls.process_utils.get_pid_of_current_process()
-                cls.__source_lines: List[str] = cls.__caller_source.lines.copy()
-                cls.attach_hook: bool = attach_hook
-                cls.language = language
-                cls.name = name or os.path.basename(cls.__caller)
-                cls.lint_suggestions: str = str()
-                if cls.linter:
-                    cls.lint_suggestions: str = cls.linter.get_report(cls.__caller)
-                if cls.attach_hook:
-                    sys.excepthook = threading.excepthook = cls.handle_exception
-                    atexit.register(cls.exit_handler)
             else:
-                logger.debug("DEBUGGER='disabled'")
-
+                cls.__caller: Path = caller
+            if language == Language.python:
+                cls.__caller_source: script = cls.script_utils.get_script(cls.__caller)
+                cls.__script: script = cls.script_utils.get_attributes(
+                    cls.__caller_source.string
+                )
+                cls.__caller_comments = cls.__script.comments
+            else:
+                with open(cls.__caller, "r", encoding="utf-8") as code:
+                    cls.__caller_source: script = cls.script_utils.get_attributes(
+                        code.read()
+                    )
+                    cls.__caller_comments = cls.__caller_source.comments
+            cls.__caller_pid: int = cls.process_utils.get_pid_of_current_process()
+            cls.__source_lines: List[str] = cls.__caller_source.lines.copy()
+            cls.attach_hook: bool = attach_hook
+            cls.language = language
+            cls.name = name or os.path.basename(cls.__caller)
+            cls.lint_suggestions: str = str()
+            if cls.linter:
+                cls.lint_suggestions: str = cls.linter.get_report(cls.__caller)
+            if cls.attach_hook:
+                sys.excepthook = threading.excepthook = cls.handle_exception
+                atexit.register(cls.exit_handler)
+        else:
+            logger.debug("DEBUGGER='disabled'")
+        if not hasattr(cls, "instance"):
             cls.instance = super(Debugger, cls).__new__(
                 cls,
                 channel,
