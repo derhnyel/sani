@@ -1,52 +1,32 @@
-from functools import wraps
+import re
+import atexit
 import asyncio
 import threading
-import multiprocessing
-from sani.utils.custom_types import Dict, List, Any, Tuple, NamedTuple, types
-from sani.core.channel import Channel, BaseCommChannel
-import sys
-from sani.debugger.linter import Linter, BaseLinter
-from sani.core.ops import (
-    OsProcess,
-    RuntimeInfo,
-    Os,
-    TerminalCommand,
-    inspect,
-    os,
-)
-import json
 import traceback
-import re
-from sani.debugger.script import Scripts, ast
+import multiprocessing
+from functools import wraps
+from sani.utils.custom_types import (
+    Dict,
+    List,
+    Any,
+    Tuple,
+    types,
+    block_object,
+    Mode,
+    script,
+    Code,
+    Context,
+    Enums,
+    Language,
+)
+from pathlib import Path
 from sani.utils.utils import Object
 from sani.core.config import Config
-import atexit
-
-from enum import Enum
-
-# import signal  # https://docs.python.org/3/library/signal.html Handle debugger raises and keyboard interrupt errors
-# https://coderzcolumn.com/tutorials/python/traceback-how-to-extract-format-and-print-error-stack-traces-in-python
-# https://pymotw.com/2/cgitb/index.html#module-cgitb // https://pymotw.com/2/traceback/
-
-import cgitb
-
-
 from sani.utils.logger import get_logger
-
-
-class Mode(str, Enum):
-    """
-    Enum for execution mode
-    """
-
-    fix = "fix"
-    document = "document"
-    test = "test"
-    improve = "improve"
-    ai_function = "ai_fn"
-    regex = "regex"
-    analyze = "analyze"
-
+from sani.debugger.linter import Linter, BaseLinter
+from sani.core.channel import Channel, BaseCommChannel
+from sani.debugger.script import Script, BaseScript, ast
+from sani.core.ops import OsProcess, RuntimeInfo, inspect, os, sys
 
 config = Config()
 logger = get_logger(__name__)
@@ -54,195 +34,197 @@ logger = get_logger(__name__)
 
 class Debugger(Object):
     """
-    Debugger class to debug and capture errors within a python script at runtime.
-    * `start` and `stop` methods to spawn a new terminal session to monitor script i.e daemonic threads can also be used.
-    * `debug` method to debug a range of lines within the python script at runtime.
-    * `wrap` decorator method to debug a function within the python script at runtime.
-    * Use a `with` statement to debug a block of code within the python script at runtime.
+    Debugger class to debug and capture errors within a script at runtime.
+    * `start` and `stop` methods to spawn a new terminal session to monitor script i.e daemonic threads can also be used. (python module only)
+    * `debug` method to debug a range of lines within the script at runtime. (for all languages)
+    * `wrap` decorator method to debug a function within the script at runtime. (python module only)
+    * Use a `with` statement to debug a block of code within the script at runtime. (python module only)
     """
 
-    __default_ostty_command: Dict[Os, TerminalCommand] = config.default_ostty_command
-    __interactive_shell_file_format: Dict[
-        str, str
-    ] = config.interactive_shell_file_format
-    deactivate: bool = config.deactivate
-    runtime_info: RuntimeInfo = config.runtime_info
-    script_utils: Scripts = Scripts
+    disable: bool = config.disable
+    runtime_info: RuntimeInfo = RuntimeInfo()
     process_utils: OsProcess = OsProcess()
     watch_logs: Dict = dict()
-    channel: BaseCommChannel = None
     instant_modes: List[Mode] = [
         Mode.improve,
         Mode.document,
         Mode.analyze,
     ]
     atexit_modes: List[Mode] = [Mode.fix, Mode.test]
-    # main_thread: threading.Thread = threading.main_thread()
-    # main_process: multiprocessing.Process = multiprocessing.current_process()
+    skip_errors: List[BaseException] = [KeyboardInterrupt, SystemExit, GeneratorExit]
 
     def __new__(
         cls,
-        __name__,
-        terminal_type: str = None,
-        channel: str = None,
-        linter: str = None,
+        name: str = None,
+        channel: str = Channel.io.name,
+        linter: str = Linter.disable.name,
+        caller: str = None,
+        attach_hook: bool = True,
+        language: str = Language.python.name,
+        run_as_main: bool = True,
         *args,
         **kwargs,
     ):
         """
-        Creates a singleton object, if it is not created,
-        or else returns the previous singleton object
+        Creates a singleton object for the Debugger class.
+        Parameters
+            name: str         -> Name of the module
+            channel: str      -> Channel to use for communication
+            linter: str       -> Linter to use for linting
+            caller: str       -> Name of the caller module
+            attach_hook: bool -> Attach hook to the script
+            language: str     -> Language of the script
+            run_as_main: bool -> Run as main script
+            args             -> Positional arguments
+            kwargs           -> Keyword arguments
+        Returns
+            Debugger instance
+        Note:
+                For flake8 linter: line lengths are recommended to be no greater than 79 characters. The reasoning for this comes from PEP8 itself:
+                Limiting the required editor window width makes it possible to have several files open side-by-side, and works well when using code review tools that present the two versions in adjacent columns.
+                You would have to sepcify a max_line_length as **kwargs if selecting the flake8 linter.
+        Note:
+                For io communication channel: The following kwargs are supported:
+                    stderr (string): The path to the log file which stderr would be redirected to.
+                    stdin (string): The path to the log file which stdin would be redirected to.
+                    stdout (string): The path to the log file which stdout would be redirected to.
         """
-
-        if terminal_type and terminal_type not in TerminalCommand.__dict__.get(
-            "_member_map_"
-        ):
-            cls.deactivate = True
-            logger.error = f"{terminal_type} Terminal Not Supported by Debugger."
-        elif cls.runtime_info.os not in Os.__dict__.get("_value2member_map_"):
-            cls.deactivate = True
-            logger.error = (
-                f"{cls.runtime_info.os} Operating System Not Supported by Debugger."
+        if linter not in Linter.__dict__.get(Enums.members):
+            linter = Linter.disable.name
+            logger.warning(
+                f"{linter} Linter Not Supported by Debugger. Linter has been disabled."
             )
-        elif linter and linter not in Linter.__dict__.get("_member_map_"):
-            cls.deactivate = True
-            logger.error = f"{linter} Linter Not Supported by Debugger."
-        elif channel and channel not in Channel.__dict__.get("_member_map_"):
-            cls.deactivate = True
-            logger.error = f"{channel} Channel Not Supported by Debugger."
-        elif __name__ != "__main__" and not config.deactivate:
-            logger.error("Debugger can only be used in __main__ module.")
-            cls.deactivate = True
-        elif __name__ == "__main__" and not config.deactivate:
-            cls.deactivate = False
+        elif channel not in Channel.__dict__.get(Enums.members):
+            channel = Channel.io.name
+            logger.warning(
+                f"{channel} Channel Not Supported by Debugger. Default io selected."
+            )
+        elif language not in Language.__dict__.get(Enums.members):
+            language = Language.python.name
+            logger.warning(
+                f"{language} Language Not Supported by Debugger. Default python selected."
+            )
+        if run_as_main:
+            if not config.disable:
+                if name != "__main__":
+                    logger.error(
+                        f"Debugger can only be used in __main__ module. Debugger has been deactivated in {name}"
+                    )
+                    cls.disable = True
+                else:
+                    cls.disable = False
 
         if not hasattr(cls, "instance"):
+            if not cls.disable:
+                logger.debug("DEBUGGER='enabled'")
+                logger.debug(
+                    f"Debugger is active in {name} module. Debugger is using {channel} channel and {linter} linter."
+                )
+                cls.script_utils: BaseScript = (
+                    Script.__dict__.get(Enums.members).get(language).value()
+                )
+                channel: Channel = Channel.__dict__.get(Enums.members).get(
+                    channel or config.channel
+                )
+                cls.channel: BaseCommChannel = channel.value(*args, **kwargs)
+                linter: Linter = Linter.__dict__.get(Enums.members).get(
+                    linter or config.linter
+                )
+                cls.linter: BaseLinter = (
+                    linter.value(*args, **kwargs) if linter.value else None
+                )
+
+                if not caller:
+                    cls.__caller_module = cls.runtime_info.get_module(
+                        cls.runtime_info.get_stack()[-1][0]
+                    )
+                    cls.__caller_filename: str = (
+                        cls.runtime_info.get_stack_caller_frame().filename
+                    )
+                    cls.__caller_filepath: str = os.path.dirname(
+                        cls.__caller_module.__file__
+                    )
+                    cls.__caller: str = os.path.join(
+                        cls.__caller_filepath, cls.__caller_filename
+                    )
+
+                else:
+                    cls.__caller: Path = caller
+                if language == Language.python:
+                    cls.__caller_source: script = cls.script_utils.get_script(
+                        cls.__caller
+                    )
+                    cls.__script: script = cls.script_utils.get_attributes(
+                        cls.__caller_source.string
+                    )
+                    cls.__caller_comments = cls.__script.comments
+                else:
+                    with open(cls.__caller, "r", encoding="utf-8") as code:
+                        cls.__caller_source: script = cls.script_utils.get_attributes(
+                            code.read()
+                        )
+                        cls.__caller_comments = cls.__caller_source.comments
+                cls.__caller_pid: int = cls.process_utils.get_pid_of_current_process()
+                cls.__source_lines: List[str] = cls.__caller_source.lines.copy()
+                cls.attach_hook: bool = attach_hook
+                cls.language = language
+                cls.name = name or os.path.basename(cls.__caller)
+                cls.lint_suggestions: str = str()
+                if cls.linter:
+                    cls.lint_suggestions: str = cls.linter.get_report(cls.__caller)
+                if cls.attach_hook:
+                    sys.excepthook = threading.excepthook = cls.handle_exception
+                    atexit.register(cls.exit_handler)
+            else:
+                logger.debug("DEBUGGER='disabled'")
+
             cls.instance = super(Debugger, cls).__new__(
                 cls,
-                __name__,
-                terminal_type=terminal_type,
-                channel=channel,
-                linter=linter,
+                channel,
+                linter,
+                caller,
+                attach_hook,
+                language,
+                name,
+                run_as_main,
                 *args,
                 **kwargs,
             )
+
         return cls.instance
 
     def __init__(
         self,
-        __name__,
-        terminal_type: str = None,
-        channel: str = None,
-        linter: str = None,
         *args,
         **kwargs,
     ):
         """
         Initialize the Debugger class with the following parameters:
             Parameters:
-                __name__ (string): The name of the module.
-                terminal_type (string): The terminal type to spawn a new terminal session.
-                channel (string): The channel to use for communication between the debugger and cli-engine ie. io|socket
-                linter (string): The linter to use for linting the python script. ie. pylint|flake8|disable
                 *args: Variable length argument list.
                 **kwargs: Arbitrary keyword arguments.
-            Note:
-                For flake8 linter: line lengths are recommended to be no greater than 79 characters. The reasoning for this comes from PEP8 itself:
-                Limiting the required editor window width makes it possible to have several files open side-by-side, and works well when using code review tools that present the two versions in adjacent columns.
-                You would have to sepcify a max_line_length as **kwargs if selecting the flake8 linter.
-            Note:
-                For io communication channel: The following kwargs are supported:
-                    stderr (string): The path to the log file which stderr would be redirected to.
-                    stdin (string): The path to the log file which stdin would be redirected to.
-                    stdout (string): The path to the log file which stdout would be redirected to.
         """
-
-        if self.deactivate:
-            logger.debug("DEBUGGER='deactivated'")
-            return
-        self.__terminal_type = terminal_type
         self.args = args
         self.kwargs = kwargs
-        linter_: Linter = Linter.__dict__.get("_member_map_").get(
-            linter or config.linter
-        )
-        channel: Channel = Channel.__dict__.get("_member_map_").get(
-            channel or config.channel
-        )
-        self.__caller_module = self.runtime_info.get_module(
-            self.runtime_info.get_stack()[-1][0]
-        )
-        self.__caller_filename: str = (
-            self.runtime_info.get_stack_caller_frame().filename
-        )
-        if self.__check_run():
-            return
-        # self.__calling_module: Tuple[
-        #     str, types.ModuleType
-        # ] = self.runtime_info.get_module_members(self.__caller_module)[-1]
-        self.__caller_pid: int = self.process_utils.get_pid_of_current_process()
-        self.__caller_filepath: str = os.path.dirname(self.__caller_module.__file__)
-        self.__caller: str = os.path.join(
-            self.__caller_filepath, self.__caller_filename
-        )
-        self.__caller_source: NamedTuple = self.script_utils.get_script(self.__caller)
-        # startline = self.runtime_info.get_stack_caller_frame().lineno
-        # init_line = self.__caller_source.lines[startline - 1].split('=')
-        self.__source_lines: List[str] = self.__caller_source.lines.copy()
-        Debugger.channel: BaseCommChannel = channel.value(*args, **kwargs)
-        self.linter: BaseLinter = linter_.value(*args, **kwargs)
-        self.lint_suggestions: str = self.linter.get_report(self.__caller)
-        # faulthandler.enable(file=sys.stderr, all_threads=True)
-        # Enable the fault handler: install handlers for the SIGSEGV, SIGFPE, SIGABRT, SIGBUS and SIGILL signals to dump the Python traceback. If all_threads is True, produce tracebacks for every running thread. Otherwise, dump only the current thread.
-        # self.__engine: NamedTuple = self.__exec_engine()
-        # print(self.__engine)
-        sys.excepthook = threading.excepthook = Debugger.handle_exception
-        atexit.register(Debugger.exit_handler)
-        # TODO: launch the terminal on init and connect to its stderr and stdin pipes .. so commands can be sent to it from anywhere
-        # QUESTION: how to get the terminal pid and kill it when the script ends?
-        # QUESTION: how does the script processes communicate with the terminal process?
-        logger.debug("DEBUGGER='activated'")
-
-    def __check_run(self) -> bool:
-        """
-        Check caller script runtime details and raise errors if not supported
-        """
-        basename = os.path.basename(self.__caller_filename).lower()
-        if not self.__caller_module or any(
-            tty_format
-            for tty_format in self.__interactive_shell_file_format
-            if tty_format in self.__caller_filename
-            or (basename == self.__interactive_shell_file_format[tty_format].lower())
-        ):
-            logger.error(
-                "Unable to locate caller module. Debugger does not support interactive terminal like ipython, idle, bpython, reinteract."
-            )
-            self.deactivate = True
-        return self.deactivate
 
     def __check_status(function: types.FunctionType) -> Any:
         """
-        Decorator to check if debugggy is deactivated.
+        Decorator to check if debugggy is disabled.
         """
-        if inspect.ismethod(function):
 
-            @wraps(function)
-            def launch_status(self, *args, **kwargs):
-                if not self.deactivate:
-                    return function(self, *args, **kwargs)
-                return self
-
-        else:
-
-            @wraps(function)
-            def launch_status(*args, **kwargs):
-                if not Debugger.deactivate:
-                    return function(*args, **kwargs)
-                return
+        @wraps(function)
+        def launch_status(self, *args, **kwargs):
+            if not self.disable:
+                return function(self, *args, **kwargs)
+            return self
 
         return launch_status
 
-    def wrap(self, mode: str = None, subject: str = None) -> Any:
+    def wrap(
+        self,
+        mode: str = None,
+        subject: str = None,
+    ) -> Any:
         """
         Decorator to debug a function block within the script at runtime.
 
@@ -266,7 +248,7 @@ class Debugger(Object):
                     or inspect.isawaitable(function)
                     or inspect.iscoroutine(function)
                 )
-                if self.deactivate:
+                if self.disable:
                     exc_output = (
                         asyncio.run(function(*args, **kwargs))
                         if check
@@ -282,7 +264,7 @@ class Debugger(Object):
                     f"method='WRAP'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
                 )
                 if mode in self.instant_modes and sync:
-                    Debugger.dispatch(mode, context, set_flag=True)
+                    self.dispatch(mode, context, set_flag=True)
                 exc_output = (
                     asyncio.run(function(*args, **kwargs))
                     if check
@@ -291,11 +273,19 @@ class Debugger(Object):
                 if mode in self.atexit_modes and sync:
                     # after sending ... set the flag to True for non-atexit dispatches
                     if mode == Mode.fix:
-                        context["prompt"]["referer"] = Mode.fix.value
-                        context["prompt"]["mode"] = Mode.improve.value
-                    context["execution"]["output"] = str(exc_output)
-                    context["execution"]["status"] = "success"
-                    Debugger.dispatch(mode, context, set_flag=True)
+                        context[Context.prompt.value][
+                            Context.referer.value
+                        ] = Mode.fix.value
+                        context[Context.prompt.value][
+                            Context.mode.value
+                        ] = Mode.improve.value
+                    context[Context.execution.value][Context.output.value] = str(
+                        exc_output
+                    )
+                    context[Context.execution.value][
+                        Context.status.value
+                    ] = Code.success.value
+                    self.dispatch(mode, context, set_flag=True)
                 return exc_output
 
             return wrapper
@@ -311,8 +301,8 @@ class Debugger(Object):
             mode (str): The debugger mode to run the function. Defaults to `improve`.
             subject (str): The subject of the code block.
         """
-        mode: str = self.get("mode") or Mode.improve.value
-        subject: str = self.get("subject")
+        mode: str = self.get(Context.mode) or Mode.improve.value
+        subject: str = self.get(Context.subject)
         startline: int = self.runtime_info.get_stack_caller_frame().lineno
         context, sync, block = self.build(
             mode,
@@ -320,7 +310,7 @@ class Debugger(Object):
             subject=subject,
         )
         if sync and mode in self.instant_modes:
-            Debugger.dispatch(mode, context, set_flag=True)
+            self.dispatch(mode, context, set_flag=True)
         logger.debug(
             f"method='WITH'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
         )
@@ -343,25 +333,25 @@ class Debugger(Object):
             # On error let the exception handler handle dispatch
             return
         # On success dispatch fix/test modes
-        tests = Debugger.watch_logs.get(Mode.test, [])
-        fixes = Debugger.watch_logs.get(Mode.fix, [])
+        tests = self.watch_logs.get(Mode.test, [])
+        fixes = self.watch_logs.get(Mode.fix, [])
 
         def dispatch(attribute: dict):
-            context = attribute.get("context")
-            context["execution"]["status"] = "success"
-            mode = context.get("prompt")["mode"]
+            context = attribute.get(Context.context)
+            context[Context.execution.value][Context.status.value] = Code.success.value
+            mode = context.get(Context.prompt)[Context.mode]
             if mode == Mode.fix:
-                context["prompt"]["referer"] = Mode.fix.value
-                context["prompt"]["mode"] = Mode.improve.value
-            Debugger.dispatch(mode, context, set_flag=True)
+                context[Context.prompt.value][Context.referer.value] = Mode.fix.value
+                context[Context.prompt.value][Context.mode.value] = Mode.improve.value
+            self.dispatch(mode, context, set_flag=True)
 
         if tests:
             test = tests[-1]
-            if startline == test["startline"]:
+            if startline == test[Context.startline]:
                 dispatch(test)
         if fixes:
             fix = fixes[-1]
-            if startline == fix["startline"]:
+            if startline == fix[Context.startline]:
                 dispatch(fix)
 
     @__check_status
@@ -371,7 +361,11 @@ class Debugger(Object):
 
     @__check_status
     def debug(
-        self, startline: int, endline: int, mode: str = None, subject: str = None
+        self,
+        startline: int,
+        endline: int,
+        mode: str = None,
+        subject: str = None,
     ):
         """
         Debug a code block within a codebase.
@@ -388,9 +382,14 @@ class Debugger(Object):
             and startline <= endline
             and endline <= self.__caller_source.lenght
         ):
-            context, sync, block = self.build(mode, startline, subject, endline=endline)
+            context, sync, block = self.build(
+                mode,
+                startline,
+                subject,
+                endline=endline,
+            )
             if sync and mode in self.instant_modes:
-                Debugger.dispatch(mode, context, set_flag=True)
+                self.dispatch(mode, context, set_flag=True)
 
             logger.debug(
                 f"method='DEBUG'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
@@ -401,9 +400,9 @@ class Debugger(Object):
                 f"Debugger can only debug a source script between line 1 and {self.__caller_source.lenght}."
             )
 
-    @staticmethod
+    @classmethod
     @__check_status
-    def handle_exception(*args) -> None:
+    def handle_exception(cls, *args) -> None:
         """
         Handle exceptions raised by Threads and Process.
             Parameters:
@@ -427,16 +426,30 @@ class Debugger(Object):
             )
         elif lenght >= 3:
             exc_type, exc_value, exc_traceback = args
-        Debugger.dispatch_on_error(exc_type, exc_value, exc_traceback, thread, process)
+        if exc_type in cls.skip_errors:
+            logger.debug(
+                f"SKIP ERROR `not dispatched` to the cli-engine for traceback={exc_traceback}::error_type={exc_type}::error_message={exc_value}'"
+            )
+            logger.error(f"{exc_type.__name__}: {exc_value}")
+            if cls.attach_hook:
+                atexit.unregister(cls.exit_handler)
+            return
+        cls.dispatch_on_error(exc_type, exc_value, exc_traceback, thread, process)
 
     @__check_status
-    def breakpoint(self, mode: str = None, subject: str = None) -> None:
+    def breakpoint(
+        self,
+        mode: str = None,
+        subject: str = None,
+        syntax_format: str = Code.end_breakpoint.value,
+    ) -> None:
         """
         Start Debugger to monitor, redirect stderr to a log file and
-        debug a python script at runtime.
+        debug a script at runtime.
         Parameters:
             mode (str): Debugger mode. Default is `improve`.
             subject (str): A user defined  subject.
+            syntax_format (str): The syntax format to use for the end breakpoint.
         """
         mode = mode or Mode.improve.value
         startline = self.runtime_info.get_stack_caller_frame().lineno
@@ -444,11 +457,11 @@ class Debugger(Object):
             mode,
             startline,
             subject=subject,
-            style="syntax",
-            syntax_format="debugger_end_breakpoint",
+            style=Code.syntax,
+            syntax_format=syntax_format,
         )
         if sync and mode in self.instant_modes:
-            Debugger.dispatch(mode, context, set_flag=True)
+            self.dispatch(mode, context, set_flag=True)
         logger.debug(
             f"method='BREAKPOINT'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
         )
@@ -482,20 +495,20 @@ class Debugger(Object):
                 index (int): Index of the log to modify.
             """
             log = logs.pop(-1)
-            log["endline"] = endline
+            log[Context.endline.value] = endline
             logs.append(log)
             self.watch_logs[mode] = logs
 
-            context["source"]["endline"] = endline
-            context["source"]["startline"] = startline
+            context[Context.source.value][Context.endline.value] = endline
+            context[Context.source.value][Context.startline.value] = startline
             logger.debug(
                 f"method='SYNC'::mode='{mode.upper()}'::startline={startline}::endline={endline}::sync={True}"
             )
             return context
 
         if last_item:
-            last_startline = int(last_item["startline"])
-            last_endline = int(last_item["endline"])
+            last_startline = int(last_item[Context.startline])
+            last_endline = int(last_item[Context.endline])
             # No point in having same code blocks with same mode overlapping each other
             logger.debug(
                 f"'SYNCHRONIZATION-CALL' mode='{mode.upper()}'::current-startline={startline}::current-endline={endline}::previous-startline={last_startline}::previous-endline={last_endline}"
@@ -558,12 +571,12 @@ class Debugger(Object):
         current_thread: threading.Thread = threading.current_thread()
         current_process: multiprocessing.Process = multiprocessing.current_process()
         watch_log = {
-            "context": context,  # Context for the cli-engine
+            Context.context.value: context,  # Context for the cli-engine
             current_thread.name: current_thread,  # Current thread
             current_process.name: current_process,  # Current process
-            "startline": startline,  # Start line of the code block
-            "endline": endline,  # End line of the code block
-            "flag": False,  # Flag to indicate if the mode was dispatched
+            Context.startline.value: startline,  # Start line of the code block
+            Context.endline.value: endline,  # End line of the code block
+            Context.flag.value: False,  # Flag to indicate if the mode was dispatched
         }
         logs = self.watch_logs.get(mode, [])
         if index:
@@ -576,9 +589,10 @@ class Debugger(Object):
         self.watch_logs[mode] = logs
         return True
 
-    @staticmethod
+    @classmethod
     @__check_status
     def dispatch(
+        cls,
         mode: str,
         context: Dict,
         set_flag: bool = False,
@@ -593,43 +607,45 @@ class Debugger(Object):
             dispatch_by_last_index (bool): Dispatch the context of the last index item in the watch logs
         """
         if (
-            (mode in [Mode.test] and context.get("execution")["status"] == "success")
-            or (mode in Debugger.instant_modes)
+            (
+                mode in [Mode.test]
+                and context.get(Context.execution)[Context.status] == Code.success
+            )
+            or (mode in cls.instant_modes)
             or (
                 mode in [Mode.fix]
-                and context.get("prompt")["referer"] == Mode.fix
-                and context.get("execution")["status"] == "success"
+                and context.get(Context.prompt)[Context.referer] == Mode.fix
+                and context.get(Context.execution)[Context.status] == Code.success
             )
         ):
-            message = json.dumps(context)
             if dispatch_by_last_index:
                 # Check flag of watch log before sending dispatch
-                mode_objects: list = Debugger.watch_logs.get(mode)
+                mode_objects: list = cls.watch_logs.get(mode)
                 if mode_objects:
                     mode_object = mode_objects.pop(-1)
-                    if not mode_object["flag"]:
-                        Debugger.channel.send(message)
+                    if not mode_object[Context.flag]:
+                        cls.channel.send(context)
                         # Update flag to True to indicate the mode was dispatched
                         if set_flag:
-                            mode_object["flag"] = set_flag
+                            mode_object[Context.flag] = set_flag
                     mode_objects.append(mode_object)
-                    Debugger.watch_logs[mode] = mode_objects
+                    cls.watch_logs[mode] = mode_objects
             else:
-                Debugger.channel.send(message)
-            referer = context.get("prompt")["referer"]
+                cls.channel.send(context)
             logger.debug(
-                f"DISPATCHED `successfully` to the cli-engine for mode='{context.get('prompt')['mode'].upper()}'::startline={context.get('source')['startline']}::endline={context.get('source')['endline']}::referer='{referer}'"
+                f"DISPATCHED `successfully` to the cli-engine for mode='{context.get('prompt')['mode'].upper()}'::startline={context.get('source')['startline']}::endline={context.get('source')['endline']}::referer='{context.get(Context.prompt)[Context.referer]}'"
             )
 
-    @staticmethod
+    @classmethod
     @__check_status
     def dispatch_on_error(
-        exc_type,
-        exc_value,
-        traceback_n,
+        cls,
+        exc_type: str,
+        exc_value: str,
+        traceback_n: str,
         thread: threading.Thread = None,
         process: multiprocessing.Process = None,
-    ) -> None:  # TODO: Define types for traceback objects
+    ) -> None:
         """
         Dispatch context to the cli-engine when the program exits with an error.
         Works for both `threads` and `processes` in `test` and `fix` modes.
@@ -640,39 +656,44 @@ class Debugger(Object):
             thread (threading.Thread): Thread that caused the error.
             process (multiprocessing.Process): Process that caused the error.
         """
-        atexit.unregister(Debugger.exit_handler)
-        traceback_nodes: List[str] = traceback.format_tb(traceback_n)
-        traceback_node = traceback_nodes[-1]
-        fixes: List[Dict[str, str]] = Debugger.watch_logs.get(Mode.fix, [])
-        tests: List[Dict[str, str]] = Debugger.watch_logs.get(Mode.test, [])
+        line_number = cls.__caller_source.lenght
+        if cls.attach_hook:
+            atexit.unregister(cls.exit_handler)
+        if isinstance(traceback_n, types.TracebackType):
+            traceback_nodes: List[str] = traceback.format_tb(traceback_n)
+            traceback_node = traceback_nodes[-1]
+            line_number: int = int(
+                re.search(r"""line (\d+)""", traceback_node).group(1)
+            )
+            traceback_n = ("").join(traceback_nodes)
+        fixes: List[Dict[str, str]] = cls.watch_logs.get(Mode.fix, [])
+        tests: List[Dict[str, str]] = cls.watch_logs.get(Mode.test, [])
         process = process or multiprocessing.current_process()
-        line_number: int = int(re.search(r"""line (\d+)""", traceback_node).group(1))
-
         attribute = thread if thread and process else process
-        trace_str = ("").join(traceback_nodes)
-        logger.error(trace_str)
+        logger.error(traceback_n)
         fixed = False  # Ensure a fix was defined for that block
         # Dispatch all fix mode code blocks on error
         for fix in fixes:
             if (
                 fix.get(attribute.name) == attribute
-                and line_number >= fix.get("startline")
-                and line_number <= fix.get("endline")
-                and not fix.get("flag")
+                and line_number >= test.get(Context.startline)
+                and line_number <= test.get(Context.endline)
+                and not fix.get(Context.flag)
             ):
-                context: Dict = fix.get("context")
-                context["execution"]["traceback"] = {
-                    "exeception_type": str(exc_type),
-                    "exception_message": str(exc_value),
-                    "full_traceback": trace_str,
-                    "error_line": str(line_number),
+                context: Dict = fix.get(Context.context)
+                context[Context.execution.value][Context.traceback.value] = {
+                    Context.exception_type.value: str(exc_type),
+                    Context.exception_message.value: str(exc_value),
+                    Context.full_traceback.value: traceback_n,
+                    Context.error_line.value: None,
                 }
-                context["execution"]["status"] = "failed"
+                context[Context.execution.value][
+                    Context.status.value
+                ] = Code.failed.value
                 # Check the flag that indicates the mode has been dispatched
-                message = json.dumps(context)
-                Debugger.channel.send(message)
+                cls.channel.send(context)
                 logger.debug(
-                    f"DISPATCHED `on error` to the cli-engine for mode='{Mode.fix.upper()}'::startline={fix.get('startline')}::endline={fix.get('endline')}::error_line={line_number}::error_type={exc_type}::error_message={exc_value}"
+                    f"DISPATCHED `on error` to the cli-engine for mode='{Mode.fix.upper()}'::startline={fix.get('startline')}::endline={fix.get('endline')}::error_line=None::error_type={exc_type}::error_message={exc_value}"
                 )
                 fixed = True
                 break
@@ -681,25 +702,26 @@ class Debugger(Object):
             for test in tests:
                 if (
                     test.get(attribute.name) == attribute
-                    and line_number >= test.get("startline")
-                    and line_number <= test.get("endline")
-                    and not test.get("flag")
+                    and not test.get(Context.flag)
+                    and line_number >= test.get(Context.startline)
+                    and line_number <= test.get(Context.endline)
                 ):
-                    context: Dict = test.get("context")
-                    context["execution"]["traceback"] = {
-                        "exeception_type": str(exc_type),
-                        "exception_message": str(exc_value),
-                        "full_traceback": trace_str,
-                        "error_line": str(line_number),
+                    context: Dict = test.get(Context.context)
+                    context[Context.execution.value][Context.traceback.value] = {
+                        Context.exception_type.value: str(exc_type),
+                        Context.exception_message.value: str(exc_value),
+                        Context.full_traceback.value: traceback_n,
+                        Context.error_line.value: None,
                     }
-                    context["execution"]["status"] = "failed"
-                    context["prompt"]["mode"] = Mode.fix
-                    context["prompt"]["referer"] = Mode.test
+                    context[Context.execution.value][
+                        Context.status.value
+                    ] = Code.failed.value
+                    context[Context.prompt.value][Context.mode.value] = Mode.fix
+                    context[Context.prompt.value][Context.referer.value] = Mode.test
                     # Check the flag that indicates the mode has been dispatched
-                    message = json.dumps(context)
-                    Debugger.channel.send(message)
+                    cls.channel.send(context)
                     logger.debug(
-                        f"DISPATCHED `on error` to the cli-engine for mode='{Mode.fix.upper()}'::referer='{Mode.test.upper()}::startline={test.get('startline')}::endline={test.get('endline')}::error_line={line_number}::error_type={exc_type}::error_message={exc_value}'"
+                        f"DISPATCHED `on error` to the cli-engine for mode='{Mode.fix.upper()}'::referer='{Mode.test.upper()}::startline={test.get('startline')}::endline={test.get('endline')}::error_line=None::error_type={exc_type}::error_message={exc_value}'"
                     )
                     fixed = True
                     break
@@ -711,11 +733,11 @@ class Debugger(Object):
         startline: int,
         subject=None,
         endline: int = None,
-        style: str = "indent",
+        style: str = Code.indent,
         body_index: int = 0,
         syntax_format: str = None,
         replace_syntax: bool = True,
-    ) -> Tuple[Dict, bool, NamedTuple]:
+    ) -> Tuple[Dict, bool, block_object]:
         """
         Build the context and code block for a specific mode.
         Parameters:
@@ -733,7 +755,7 @@ class Debugger(Object):
             block (NamedTuple): Code block.
         """
         # build code block tuple
-        block: NamedTuple = self.__build_block(
+        block: block_object = self.__build_block(
             startline,
             endline,
             style,
@@ -763,11 +785,11 @@ class Debugger(Object):
         self,
         startline: int,
         endline: int = None,
-        style: str = "indent",
+        style: str = Code.indent,
         body_index: int = 0,
         syntax_format: str = None,
         replace_syntax: bool = True,
-    ) -> NamedTuple:
+    ) -> block_object:
         """
         Build the code block from the source file.
         Parameters:
@@ -780,45 +802,47 @@ class Debugger(Object):
         Returns:
             block (NamedTuple): Code block.
         """
-        block_object = NamedTuple(
-            "Block",
-            [
-                ("block", str),
-                ("startline", int),
-                ("endline", int),
-                ("block_ast_dump", str),
-                ("block_comments", str),
-            ],
-        )
         try:
             if not endline:
                 endline = self.__caller_source.lenght
-
-                if style == "indent":
-                    lines = self.__caller_source.lines
-                    first_line = lines[startline - 1]
+                if style == Code.indent:
+                    first_line = self.__caller_source.lines[startline - 1]
                     strips = len(first_line) - len(first_line.lstrip())
                     # Get the endline of a code block using the indent style
-                    source_script = ("").join(lines[startline - 1 : -1])
-                    block_ast: ast.AST = (
-                        self.script_utils.get_ast(source_script).body[body_index]
-                        if body_index
-                        else self.script_utils.get_ast(source_script)
-                    )
-                    block = self.script_utils.get_script_from_ast(block_ast)
                     for line in range(startline + 1, endline):
-                        if len(lines[line]) - len(lines[line].lstrip()) == strips:
+                        if (
+                            len(self.__caller_source.lines[line])
+                            - len(self.__caller_source.lines[line].lstrip())
+                            == strips
+                        ):
                             endline = line
                             break
-                elif style == "syntax":
-                    lines = self.__source_lines
+                    block_ast: ast.AST = (
+                        (
+                            self.script_utils.get_ast(self.__caller_source.string).body[
+                                body_index
+                            ]
+                            if body_index
+                            else self.script_utils.get_ast(self.__caller_source.string)
+                        )
+                        if self.language == Language.python
+                        else None
+                    )
+                    block = (
+                        self.script_utils.get_script_from_ast(block_ast)
+                        if block_ast
+                        else ("").join(
+                            self.__caller_source.lines[startline - 1 : endline - 1]
+                        )
+                    )
+                elif style == Code.syntax:
                     for line in range(startline, endline):
-                        if syntax_format in lines[line]:
-                            # Maintain breakpoints end syntax.
-                            # Remove so another breakpoint method would find its end syntax
+                        if syntax_format in self.__source_lines[line]:
+                            # Maintain end syntax.
                             if replace_syntax:
-                                lines.pop(line)
-                                lines.insert(
+                                # Remove so another syntax method would find its end syntax
+                                self.__source_lines.pop(line)
+                                self.__source_lines.insert(
                                     line,
                                     f"Debugger inserted placeholder in line {line+1}",
                                 )
@@ -827,23 +851,35 @@ class Debugger(Object):
                     block = ("").join(
                         self.__caller_source.lines[startline - 1 : endline - 1]
                     )
-                    block_ast: ast.AST = self.script_utils.get_ast(block)
-                block_ast_dump: str = ast.dump(block_ast)
-                block_comments: str = self.script_utils.get_comments(block_ast)
+                    block_ast: ast.AST = (
+                        self.script_utils.get_ast(block)
+                        if self.language == Language.python
+                        else None
+                    )
+                block_ast_dump: str = ast.dump(block_ast) if block_ast else None
+                block_comments: str = (
+                    self.script_utils.get_comments(block_ast) if block_ast else None
+                )
             else:
                 block = ("").join(
                     self.__caller_source.lines[startline - 1 : endline - 1]
                 )
-                block_ast = self.script_utils.get_ast(block)
-                block_ast_dump = ast.dump(block_ast)
-                block_comments = self.script_utils.get_comments(block_ast)
 
+                block_ast = (
+                    self.script_utils.get_ast(block)
+                    if self.language == Language.python
+                    else None
+                )
+                block_ast_dump = ast.dump(block_ast) if block_ast else None
+                block_comments = (
+                    self.script_utils.get_comments(block_ast) if block_ast else None
+                )
             return block_object(
                 block, startline, endline, block_ast_dump, block_comments
             )
         except IndentationError as e:
             logger.error(
-                f"Block startline={startline} to endline={endline} has the incorrect python syntax within it. Please select a valid python syntax block. "
+                f"Block startline={startline} to endline={endline} has the incorrect language syntax within it. Please select a valid language syntax block. "
             )
             return block_object(None, startline, endline, None, None)
 
@@ -861,7 +897,7 @@ class Debugger(Object):
         exception_type: BaseException = None,
         exception_message: str = None,
         full_traceback: str = None,
-        status: str = "started",
+        status: str = Code.inprogress.value,
         referer: str = None,
     ) -> Dict:
         """
@@ -883,39 +919,40 @@ class Debugger(Object):
             context (Dict[str : Dict[str, str]]): Context for the cli-engine.
         """
         context: Dict = {
-            "execution": {
-                "output": output,
-                "traceback": {
-                    "exception_type": exception_type,
-                    "exception_message": exception_message,
-                    "full_traceback": full_traceback,
-                    "error_line": error_line,
+            Context.execution.value: {
+                Context.output.value: output,
+                Context.traceback.value: {
+                    Context.exception_type.value: exception_type,
+                    Context.exception_message.value: exception_message,
+                    Context.full_traceback: full_traceback,
+                    Context.error_line: error_line,
+                    Context.pid.value: self.__caller_pid,
                 },
-                "status": status,
+                Context.status.value: status,
             },
-            "source": {
-                "startline": str(startline),
-                "endline": str(endline),
-                "code": self.__caller_source.string,
-                "block": block,
-                "imports": self.__caller_source.imports,
-                "lined_code": self.__caller_source.lined_string,
-                "code_ast_dump": self.__caller_source.ast_dump,
-                "linenos": str(self.__caller_source.lenght),
-                "block_ast": block_ast_dump,
+            Context.source.value: {
+                Context.startline.value: str(startline),
+                Context.endline.value: str(endline),
+                Context.code.value: self.__caller_source.string,
+                Context.block.value: block,
+                Context.imports.value: self.__caller_source.imports,
+                Context.lined_code.value: self.__caller_source.lined_string,
+                Context.code_ast_dump.value: self.__caller_source.ast_dump,
+                Context.linenos.value: str(self.__caller_source.lenght),
+                Context.block_ast.value: block_ast_dump,
             },
-            "prompt": {
-                "suggestions": {
-                    "linter": {
-                        "value": self.lint_suggestions,
-                        "format": "pylint",
+            Context.prompt.value: {
+                Context.suggestions.value: {
+                    Context.linter.value: {
+                        Context.suggestions.value: self.lint_suggestions,
+                        Context.lint_format: Linter.pylint.name,
                     },
-                    "block_comments": block_comments,
-                    "subject": subject,
-                    "comments": self.__caller_source.comments,
+                    Context.block_comments.value: block_comments,
+                    Context.subject.value: subject,
+                    Context.comments.value: self.__caller_comments,
                 },
-                "mode": mode,  # TODO: change to mode
-                "referer": referer,
+                Context.mode.value: mode,
+                Context.referer.value: referer,
             },
         }
         # logger.debug(f"'CONTEXT'::context_dict={context}")
@@ -923,246 +960,53 @@ class Debugger(Object):
 
     @__check_status
     def debugger_end_breakpoint(self):
-        endline = self.runtime_info.get_stack_caller_frame().lineno
-        logger.debug(f"'ENDBREAKPOINT'::endline={endline}")
-        # extract the record tied to this end block and dispatch it.. also update it with a flag as True on success ...also it should be the [-1] record in test and fix
+        if self.language == Language.python:
+            endline = self.runtime_info.get_stack_caller_frame().lineno
+            logger.debug(f"'ENDBREAKPOINT'::endline={endline}")
 
-    def __exec_engine(self, terminal_type: str = None) -> NamedTuple:
-        """
-        Spawn the debugger terminal and execute command in it.
-        Parameters:
-            terminal_type (str): The terminal type to spawn.
-        Returns:
-            NamedTuple: The terminal type, exit code and command.  NamedTuple("Terminal",[("terminal_type", str),("exit_code", int),("command", str),],)
-        """
-        # get debugger command
-        engine = NamedTuple(
-            "Terminal",
-            [
-                ("terminal_type", str),
-                ("exit_code", int),
-                ("command", str),
-            ],
-        )
-        terminal_type = terminal_type or self.__terminal_type
-        command: TerminalCommand = (
-            eval(f"TerminalCommand.{terminal_type}")
-            if terminal_type
-            else self.__default_ostty_command[self.runtime_info.os]
-            if self.runtime_info.distro[0].lower() != Os.ubuntu.lower()
-            else TerminalCommand.gnome
-        )  # Get the debugger command based on the terminal type and the os
-        command = command.format(
-            # TODO: Define the path to __main__.py
-            command=f"{sys.executable} __main__.py run -c --comm {self.channel.channel_type} -cr --comm-cred {self.channel.channel_credential} --caller-pid -id {self.__caller_pid} -p --caller-path {self.__caller}"
-        )
-        exit_code: int = os.system(command)
-        if exit_code != 0:
-            logger.error("Cli-Engine failed to start")
-        return engine(terminal_type, exit_code, command)
-
-    @staticmethod
+    @classmethod
     @__check_status
-    def exit_handler():
+    def exit_handler(cls):
         """
         Exit handler to be called on exit of the program.
         """
         # Dispatch all test mode code blocks at exit
-        tests = Debugger.watch_logs.get(Mode.test, [])
-        fixes = Debugger.watch_logs.get(Mode.fix, [])
+        tests: List[Dict] = cls.watch_logs.get(Mode.test, [])
+        fixes: List[Dict] = cls.watch_logs.get(Mode.fix, [])
         for test in tests:
-            if not test["flag"]:
-                context = test.get("context")
-                context["execution"]["status"] = "success"
-                Debugger.dispatch(
+            if not test[Context.flag]:
+                context = test.get(Context.context)
+                context[Context.execution.value][
+                    Context.status.value
+                ] = Code.success.value
+                cls.dispatch(
                     Mode.test,
                     context,
                     dispatch_by_last_index=False,
                 )
         # Redirect all fix modes to improve ... if the fix code block isnt within a previous improve code block
-        improvements = Debugger.watch_logs.get(Mode.improve, [])
+        improvements: List[Dict] = cls.watch_logs.get(Mode.improve, [])
         for fix in fixes:
-            if not fix["flag"]:
-                startline = fix.get("startline")
-                endline = fix.get("endline")
+            if not fix[Context.flag]:
+                startline = fix.get(Context.startline)
+                endline = fix.get(Context.endline)
                 if any(
                     [
                         improve
                         for improve in improvements
-                        if startline >= improve.get("startline")
-                        and endline <= improve.get("endline")
+                        if startline >= improve.get(Context.startline)
+                        and endline <= improve.get(Context.endline)
                     ]
                 ):
                     continue
-                context = fix.get("context")
-                context["execution"]["status"] = "success"
-                context["prompt"]["referer"] = Mode.fix.value
-                context["prompt"]["mode"] = Mode.improve.value
-                Debugger.dispatch(
+                context = fix.get(Context.context)
+                context[Context.execution.value][
+                    Context.status.value
+                ] = Code.success.value
+                context[Context.prompt.value][Context.referer.value] = Mode.fix.value
+                context[Context.prompt.value][Context.mode.value] = Mode.improve.value
+                cls.dispatch(
                     Mode.fix,
                     context,
                     dispatch_by_last_index=False,
                 )
-
-        # TODO: Log the exit handler
-        # TODO: If error occurs outside main thread or process do not unregister the exit handler or a not daemon thread or process
-        # if Debugger.channel:
-        # Debugger.channel.close()
-
-
-# Modes
-# test: Write `Test`` for the code block and run it to check if it passes. utilizes pytest python api ... Doesn't write test if an error occurs within the code block at runtime ...  instead it logs the error and suggest a `fix` to the code block.
-# fix: `Fix` and suggest making changes to the code block. Only runs if an error occurs within the code block at runtime. instead it suggests `improve` to the code block.
-# improve: `Improve` and suggest changes to the code block. runs irrespective of errors within the code block at runtime. utilizes linters suggestions,comments and subject. suggest making changes to the code block.
-# document: Write `Documentation` for the code block. runs irrespective of errors within the code block at runtime.
-# TODO: Add a referer to cli context ... to know what mode suggested another mode. based on this we could come up with better optimized prompts
-# TODO: Restrict execute function to wrap method only
-# A Sample usage of the debugger class
-# from debugger import Debugger
-# debug = Debugger()
-
-# Usage
-# 1. Using a start and stop method to capture code between the blocks
-# debug.breakpoint(mode="fix",subject="This is a sample subject")
-# #code goes here
-# debug.end_breakpoint()
-
-# 2. Using a with statement to capture code between the blocks
-# with debug(mode="improve",subject="This is a sample subject") as debugger:
-#     #code goes here
-
-# 3. Using a decorator method `wrap` to capture code between the blocks
-# @debug.wrap(mode="test",subject="This is a sample subject")
-# def function():
-#     #code goes here
-
-# 4. Using a `debug` method to capture code between a start and end line
-# debug.debug(startline=1, endline=10,mode="document",subject="This is a sample subject")
-
-# TODO: A regex function that takes a description or what to extract and a sample string where that can be found and returns a list of matches
-# TODO: Define a debugger exception class and raise it when an error occurs
-# TODO: Define a logging class to log debugger errors and other debugger related information instead of raising errors and exceptions logs could be used
-# TODO: When debugger is imported as a module, it should start monitoring the code from the calling script
-# TODO: Add a prompt builder ... build prompts with suggestions from pylint/flack8 and comments
-# TODO: Self healing code ... comment (use difflib) out block/blocks based on users inputs/choices and replace with an alternative block ... You can use exec() to execute the code from the same directory as the caller script ... The prompt should specify little modification to the source code is required to make it work
-# TODO: integrate with pytest ... aside self healing also run script and install missing packages/dependencies (a general code fix to make sure the code runs)
-# TODO: A watch all code function that behave like debugger v1.0 ... when imported it should watch all code in the script , write errors to stderr and perform suggestions and refactoring on the code
-# TODO: Add a beeping system to both tui/cli and debugger instance to keep both in sync.... on program start and end and execution phase etc..
-# TODO: Implement file locking system when communicating with the tui/cli .. https://blog.gitnux.com/code/python-file-lock/#:~:text=In%20Python%2C%20file%20locking%20can,access%2C%20including%20locking%20and%20unlocking.
-# TODO: Use a watchdog to watch for file change in tui/cli then read it in as stdin
-# EDGECASE: How does debugger function within a thread... does it work as expected
-# EDGECASE: How does debugger function within a process... does it work as expected
-# EDGECASE: What happens when debugger is imported as a module ???
-# TODO: For the llm use auto gpt to save google links into memory and extract sugestions and links ... this would help in fixing code especially.
-# BUG: Stop debugger from debugging its own errors and if any(e in error for e in ["KeyboardInterrupt", "SystemExit", "GeneratorExit"]): # Non-compiler errors .. Skip Crtl+C and other keyboard interrupts error
-# BUG: Does not work with multiprocessing code... fix it
-# BUG : When checking error line.. add check to ensure the file names are same .. if it fails use the other method... with fname and line number and check again
-# BUG: Class methods codeblock are not capture correctly .. it captures the whole class
-# BUG: Code throws errors when using with method `AttributeError: __enter__` on deactivate
-# TODO: Auto pick debugger mode based on code outcome ... if code fails use fix mode if code passes use improve mode
-# TODO: OPTIMIZE: Use the line number an intelligent parsing to get what variable name debugger was assign to on init
-# TODO: Use signals handlers
-# TODO: Configure signals for different os and terminals
-# TODO: Handle invalid modes
-# TODO: Introduce sani workspaces  ... Debugger checks if sani is running (???)(flag)(efficiency??) and if it use the default workspace or predifined workspace from config.(Work spaces can only be changed from config)
-# if exc_type and exc_value and traceback: are none then call the watch_logs and remove the latest item from the watch_logs for  fix mode
-# if exc_type and exc_value and traceback: are none then call the watch_logs and extract the test latest entry and dispatch for test mode
-# else get the watch log call the dispatch_on_error __exit__ works for modes that supoort watch (fix,test)
-# exc_type, exc_obj, exc_tb = sys.exc_info()
-# fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-# print(exc_type, fname, exc_tb.tb_lineno)
-# Get the watch logs for fix .. get the latest entry dictionary .....
-# Remember to remove the latest entry from the watch logs .... if no error occurs
-# context = (  # A sampl context for the cli-engine
-#     {
-#         "execution": {
-#             "output": "code_execution_output",
-#             "traceback": {
-#                 "exeception_type": "The type of the execption raised",
-#                 "exception_message": "The message of the exception raised",
-#                 "full_traceback": "traceback of the code if any",
-#                 "error_line": "the line where the error occured",
-#             },
-#             "status": "failed/success/started",
-#         },  # "traceback of the code if any"
-#         "source": {
-#             "startline": "the start line of the block of code",
-#             "endline": "the end line of the block of code",
-#             "code": "The whole source code",
-#             "block": "The block of code that was selected by the user",  # could be same as the code
-#             "imports": "The imports within the code block",
-#             "line_code": "The code with line numbers",
-#             "line_block": "The block of code with line numbers",
-#             "code_ast": "The ast of the whole source code",
-#             "linenos": "The line numbers of the code",
-#             "block_ast": "The ast of the block of code that was selected by the user",  # could be same as the code_ast .. use ast.dump() to get the ast
-#         },  # "the whole source code"
-#         "prompt": {
-#             "suggestions": {
-#                 "linter": {
-#                     "value": "The suggestions from the linter eg. pylint, flake8",
-#                     "format": "pylint, flake8, etc",
-#                 },
-#                 "comments": "The suggestions from the comments within the code block",
-#                 "subject": "The suggestions from the user",  # This could be a list or dictionary from the options arguement defined by the user
-#             },  # "suggestions from the debugger",  # suggestions from the debugger could be from pylint, flake8, comments/documentations, etc,
-#             "mode": "The mode of the prompt eg. refactor, fix,test,documentation",
-#         },
-#     },
-# )
-
-# class GracefulDeath:
-#     """Catch signals to allow graceful shutdown."""
-
-#     def __init__(self):
-#         self.received_signal = self.received_term_signal = False
-#         catch_signals = [
-#             1,
-#             2,
-#             3,
-#         ]
-#         for signum in catch_signals:
-#             signal.signal(signum, self.handler)
-
-#     def handler(self, signum, frame):
-#         self.last_signal = signum
-#         self.received_signal = True
-#         if signum in [2, 3, 15]:
-#             self.received_term_signal = True
-#         # {
-#         #     signal.SIGHUP: 1,
-#         #     signal.SIGINT: 2,
-#         #     signal.SIGQUIT: 3,
-#         #     signal.SIGILL: 4,
-#         #     signal.SIGTRAP: 5,
-#         #     signal.SIGABRT: 6,
-#         #     signal.SIGEMT: 7,
-#         #     signal.SIGFPE: 8,
-#         # signal.SIGKILL: 9, # this is not working for unix
-#         #     signal.SIGBUS: 10,
-#         #     signal.SIGSEGV: 11,
-#         #     signal.SIGSYS: 12,
-#         #     signal.SIGPIPE: 13,
-#         #     signal.SIGALRM: 14,
-#         #     signal.SIGTERM: 15,
-#         #     signal.SIGURG: 16,
-#         # signal.SIGSTOP: 17,# this is not working for unix
-#         #     signal.SIGTSTP: 18,
-#         #     signal.SIGCONT: 19,
-#         #     signal.SIGCHLD: 20,
-#         #     signal.SIGTTIN: 21,
-#         #     signal.SIGTTOU: 22,
-#         #     signal.SIGIO: 23,
-#         #     signal.SIGXCPU: 24,
-#         #     signal.SIGXFSZ: 25,
-#         #     signal.SIGVTALRM: 26,
-#         #     signal.SIGPROF: 27,
-#         #     signal.SIGWINCH: 28,
-#         #     signal.SIGINFO: 29,
-#         #     signal.SIGUSR1: 30,
-#         #     signal.SIGUSR2: 31,
-#         # }
-
-
-
-

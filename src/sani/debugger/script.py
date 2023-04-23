@@ -29,7 +29,7 @@ class BaseScript:
             .value()
         )
 
-    def get_script(self, file) -> str:
+    def get_script(self, file) -> script:
         """
         Get a report from the script
         """
@@ -42,8 +42,8 @@ class BaseScript:
             lenght,
             code,
         ) = self.parser.extract_attributes(source_code)
-        return self.script(
-            lenght, source_list, code, lined_source, None, None, None, comments
+        return script(
+            lenght, source_list, code, lined_source, None, None, None, None, comments
         )
 
     def get_script_path(self, file: str) -> str:

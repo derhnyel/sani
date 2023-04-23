@@ -57,3 +57,79 @@ engine = NamedTuple(
 )
 
 io_object = NamedTuple("IO", [("path", str), ("stream", io.TextIOWrapper)])
+
+
+class Mode(str, Enum):
+    """
+    Enum for execution mode
+    """
+
+    fix = "fix"
+    document = "document"
+    test = "test"
+    improve = "improve"
+    ai_function = "ai_fn"
+    regex = "regex"
+    analyze = "analyze"
+
+
+class Language(str, Enum):
+    python = "python"
+    javascript = "javascript"
+    go = "golang"
+    c = "c"
+    ruby = "ruby"
+    html = "html"
+    shell = "shell"
+
+
+class Code(str, Enum):
+    success = "success"
+    failed = "failed"
+    inprogress = "inprogress"
+    syntax = "syntax"
+    indent = "indent"
+    error = "error"
+    enable = "enable"
+    disable = "disable"
+    end_breakpoint = "debugger_end_breakpoint"
+
+
+class Context(str, Enum):
+    execution = "execution"
+    output = "output"
+    traceback = "traceback"
+    exception_type = "exception_type"
+    exception_message = "exception_message"
+    full_traceback = "full_traceback"
+    error_line = "error_line"
+    status = "status"
+    source = "source"
+    startline = "startline"
+    endline = "endline"
+    code = "code"
+    block = "block"
+    imports = "imports"
+    lined_code = "lined_code"
+    code_ast_dump = "code_ast_dump"
+    linenos = "linenos"
+    block_ast = "block_ast"
+    prompt = "prompt"
+    suggestions = "suggestions"
+    linter = "linter"
+    value = "value"
+    lint_format = "format"
+    block_comments = "block_comments"
+    subject = "subject"
+    comments = "comments"
+    mode = "mode"
+    referer = "referer"
+    flag = "flag"
+    language = "language"
+    context = "context"
+    pid = "pid"
+
+
+class Enums(str, Enum):
+    members = "_member_map_"
+    values = "_value2member_map_"

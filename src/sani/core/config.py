@@ -12,9 +12,8 @@ class Config:
 
     disable: bool = os.getenv("DEBUGGER_DEACTIVATE", False)
     deactivate = disable
-    runtime_info: RuntimeInfo = RuntimeInfo()
     linter: str = os.getenv("DEBUGGER_LINTER", "pylint")  # pylint|flake8|disable
-    linter_max_line_length: int = int(os.getenv("DEBUGGY_LINTER_MAX_LINE_LENGTH", 120))
+    linter_max_line_length: int = int(os.getenv("DEBUGGER_LINTER_MAX_LINE_LENGTH", 120))
     channel: str = os.getenv("DEBUGGER_CHANNEL", "io")  # io|rmq|redis
     log_level = os.getenv("DEBUGGY_LOG_LEVEL", "DEBUG")
     default_ostty_command: Dict[Os, TerminalCommand] = field(
@@ -37,5 +36,5 @@ class Config:
     )
     raise2logs: bool = os.getenv("DEBUGGY_RAISE2LOGS", True)
     deactivate_exception_hooks: bool = os.getenv(
-        "DEBUGGY_DEACTIVATE_EXCEPTION_HOOKS", False
+        "DEBUGGER_DEACTIVATE_EXCEPTION_HOOKS", False
     )

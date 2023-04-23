@@ -2,7 +2,15 @@ import io
 import re
 import tokenize
 from bisect import bisect_left
-from sani.utils.custom_types import List, Generator, ABC, abstractmethod, Comment, Enum
+from sani.utils.custom_types import (
+    List,
+    Generator,
+    ABC,
+    abstractmethod,
+    Comment,
+    Enum,
+    Tuple,
+)
 from sani.utils.exception import UnterminatedCommentError
 
 
@@ -19,7 +27,9 @@ class BaseParser(ABC):
         self.kwargs = kwargs
 
     @abstractmethod
-    def extract_attributes(self, code: str) -> List[Comment]:
+    def extract_attributes(
+        self, code: str
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given code.
 
         Args:
@@ -36,7 +46,9 @@ class PythonParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(self, source: str) -> List[Comment]:
+    def extract_attributes(
+        self, source: str
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given Python script.
 
         Comments are identified using the tokenize module. Does not include function,
@@ -70,7 +82,9 @@ class GoParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(self, code: str) -> List[Comment]:
+    def extract_attributes(
+        self, code: str
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given Go source code.
 
         Comments are represented with the Comment class found in the module.
@@ -189,7 +203,7 @@ class CParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> List[Comment]:
+    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given C family source code.
 
         Comments are represented with the Comment class found in the module.
@@ -253,7 +267,7 @@ class JsParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> List[Comment]:
+    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given Javascript source code.
 
         Comments are represented with the Comment class found in the module.
@@ -361,7 +375,7 @@ class HtmlParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> List[Comment]:
+    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given HTML family source code.
 
         Comments are represented with the Comment class found in the module.
@@ -418,7 +432,7 @@ class RubyParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> List[Comment]:
+    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given Ruby source code.
 
         Comments are represented with the Comment class found in the module.
@@ -465,7 +479,7 @@ class ShellParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> List[Comment]:
+    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given shell script.
 
         Comments are represented with the Comment class found in the module.
