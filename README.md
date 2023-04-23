@@ -147,9 +147,10 @@ def add_two_numbers(a,b):
 - ⚙️ Add a prompt builder ... build prompts with suggestions from pylint/flack8 and comments
 - 🖥️ Tui /cli build with textual.
 - ⚙️ Add gpt support.
+- ⚙️ Add comments parsing support for various languages.
+
 
 ## Inspirations
 
 - [Auto-Gpt]()
 - [Mavin-AI]()
-- [Warp-Ai]()
