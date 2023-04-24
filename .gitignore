@@ -5,7 +5,8 @@
 *.pyo
 *.pyd
 *.txt
-*test*
+test.py
+prompt.py
 *ai_*
 *wolve*
 *.env*
