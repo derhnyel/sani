@@ -132,7 +132,7 @@ class Debugger(Object):
                 linter.value(*args, **kwargs) if linter.value else None
             )
 
-            if not caller:
+            if not caller and language == Language.python:
                 cls.__caller_module = cls.runtime_info.get_module(
                     cls.runtime_info.get_stack()[-1][0]
                 )
@@ -145,6 +145,10 @@ class Debugger(Object):
                 cls.__caller: str = os.path.join(
                     cls.__caller_filepath, cls.__caller_filename
                 )
+            elif not caller:
+                logger.error("Caller script is required for non-python languages.")
+                cls.disable = True
+                raise ValueError("Caller script is required for non-python languages.")
             else:
                 cls.__caller: Path = caller
             if language == Language.python:
@@ -158,7 +162,7 @@ class Debugger(Object):
                     cls.__caller_source: script = cls.script_utils.get_attributes(
                         code.read()
                     )
-                    cls.__caller_comments = cls.__caller_source.comments
+                cls.__caller_comments = cls.__caller_source.comments
             cls.__caller_pid: int = cls.process_utils.get_pid_of_current_process()
             cls.__source_lines: List[str] = cls.__caller_source.lines.copy()
             cls.attach_hook: bool = attach_hook
@@ -310,6 +314,7 @@ class Debugger(Object):
             f"method='WITH'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
         )
 
+    @__check_status
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         """
         Exit function for the debugger context manager.

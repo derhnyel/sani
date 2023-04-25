@@ -1,4 +1,4 @@
-from typing import Union, Dict, List, Any, Tuple, NamedTuple, Type, Generator
+from typing import Union, Dict, List, Any, Tuple, NamedTuple, Type, Generator, Optional
 import types
 from enum import Enum
 import ast
@@ -28,7 +28,7 @@ script = NamedTuple(
         ("lined_list", List[str]),
         ("ast", ast.AST),
         ("imports", str),
-        ("comments", str),
+        ("comments", List[Comment]),
         (
             "ast_dump",
             str,

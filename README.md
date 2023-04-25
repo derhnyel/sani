@@ -148,9 +148,16 @@ def add_two_numbers(a,b):
 - 🖥️ Tui /cli build with textual.
 - ⚙️ Add gpt support.
 - ⚙️ Add comments parsing support for various languages.
+- ♻️ Build a terminal bot that takes in shell commands as a human readable string and outputs the result
 
+```bash
+sani --shell "Get me all the directories that end in 'ing' in the current directory"
+# Gives the result of directories
+```
 
 ## Inspirations
 
-- [Auto-Gpt]()
-- [Mavin-AI]()
+- [Auto-Gpt](https://github.com/Significant-Gravitas/Auto-GPT)
+- [Mavin-AI](https://github.com/PrefectHQ/marvin)
+- [Shell-Genie](https://github.com/dylanjcastillo/shell-genie)
+- [Wolverine](https://github.com/biobootloader/wolverine)
