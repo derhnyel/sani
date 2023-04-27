@@ -837,7 +837,7 @@ class Debugger(Object):
                     )
                 elif style == Code.syntax:
                     for line in range(startline, endline):
-                        if syntax_format in self.__source_lines[line]:
+                        if syntax_format.lower() in self.__source_lines[line].lower():
                             # Maintain end syntax.
                             if replace_syntax:
                                 # Remove so another syntax method would find its end syntax

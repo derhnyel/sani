@@ -76,7 +76,7 @@ class Mode(str, Enum):
 class Language(str, Enum):
     python = "python"
     javascript = "javascript"
-    go = "golang"
+    go = "go"
     c = "c"
     ruby = "ruby"
     html = "html"
@@ -93,6 +93,7 @@ class Code(str, Enum):
     enable = "enable"
     disable = "disable"
     end_breakpoint = "debugger_end_breakpoint"
+    end_syntax = "sani:end"
 
 
 class Context(str, Enum):
@@ -133,3 +134,16 @@ class Context(str, Enum):
 class Enums(str, Enum):
     members = "_member_map_"
     values = "_value2member_map_"
+
+
+class Os(str, Enum):
+    """
+    Operating Systems Enum
+    """
+
+    linux = "linux"
+    linux2 = "linux2"
+    ubuntu = "ubuntu"
+    mac = "darwin"
+    windows32 = "win32"
+    windows64 = "win64"

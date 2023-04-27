@@ -1,13 +1,7 @@
 import os
 import astor
 import linecache
-from sani.utils.custom_types import (
-    Any,
-    Generator,
-    script,
-    ast,
-    Enum,
-)
+from sani.utils.custom_types import Any, Generator, script, ast, Enum, Language
 from sani.debugger.parser import Parser, BaseParser
 
 
@@ -24,9 +18,7 @@ class BaseScript:
         self.args = args
         self.kwargs = kwargs
         self.parser: BaseParser = (
-            Parser.__dict__.get("_member_map_")
-            .get(self.script_type or "python")
-            .value()
+            Parser.__dict__.get("_member_map_").get(self.script_type).value()
         )
 
     def get_script(self, file) -> script:
@@ -63,7 +55,7 @@ class PythonScript(BaseScript):
     Utility class to get a python script information/attributes
     """
 
-    script_type = "python"
+    script_type = Language.python
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -176,7 +168,7 @@ class GoScript(BaseScript):
     Utility class to get a golang script information/attributes
     """
 
-    script_type = "go"
+    script_type = Language.go
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -187,14 +179,14 @@ class CScript(BaseScript):
     Utility class to get a c script information/attributes
     """
 
-    script_type = "c"
+    script_type = Language.c
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
 
 class HtmlScript(BaseScript):
-    script_type = "html"
+    script_type = Language.html
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -205,7 +197,7 @@ class RubyScript(BaseScript):
     Utility class to get a ruby script information/attributes
     """
 
-    script_type = "ruby"
+    script_type = Language.ruby
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -216,7 +208,7 @@ class JavaScript(BaseScript):
     Utility class to get a javascript script information/attributes
     """
 
-    script_type = "javascript"
+    script_type = Language.javascript
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -227,7 +219,7 @@ class ShellScript(BaseScript):
     Utility class to get a shell script information/attributes
     """
 
-    script_type = "shell"
+    script_type = Language.shell
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
