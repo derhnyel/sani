@@ -127,11 +127,17 @@ class IoCommChannel(BaseCommChannel):
         """
         # TODO: house watchdog process here
 
+        # Acknowlege the message
+        # Process the message
+        # Callback(message)
+
     def callback(self):
         """
-        Callback for the io comm channel
+        Callback for the io comm channel .
         """
         pass
+        # Get bot response
+        # Send bot response to thread queue
 
     def receive(self, *args, **kwargs):
         """

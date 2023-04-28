@@ -12,16 +12,14 @@ from sani.utils.custom_types import (
     Tuple,
     types,
     block_object,
-    Mode,
     script,
     Code,
     Context,
     Enums,
-    Language,
 )
 from pathlib import Path
 from sani.utils.utils import Object
-from sani.core.config import Config
+from sani.core.config import Config, Mode, Language
 from sani.utils.logger import get_logger
 from sani.debugger.linter import Linter, BaseLinter
 from sani.core.channel import Channel, BaseCommChannel
@@ -45,12 +43,8 @@ class Debugger(Object):
     runtime_info: RuntimeInfo = RuntimeInfo()
     process_utils: OsProcess = OsProcess()
     watch_logs: Dict = dict()
-    instant_modes: List[Mode] = [
-        Mode.improve,
-        Mode.document,
-        Mode.analyze,
-    ]
-    atexit_modes: List[Mode] = [Mode.fix, Mode.test]
+    instant_modes: List[Mode] = config.instant_modes
+    atexit_modes: List[Mode] = config.atexit_modes
     skip_errors: List[BaseException] = [KeyboardInterrupt, SystemExit, GeneratorExit]
 
     def __new__(
@@ -159,9 +153,7 @@ class Debugger(Object):
                 cls.__caller_comments = cls.__script.comments
             else:
                 with open(cls.__caller, "r", encoding="utf-8") as code:
-                    cls.__caller_source: script = cls.script_utils.get_attributes(
-                        code.read()
-                    )
+                    cls.__caller_source: script = cls.script_utils.get_attributes(code)
                 cls.__caller_comments = cls.__caller_source.comments
             cls.__caller_pid: int = cls.process_utils.get_pid_of_current_process()
             cls.__source_lines: List[str] = cls.__caller_source.lines.copy()
@@ -640,9 +632,9 @@ class Debugger(Object):
     @__check_status
     def dispatch_on_error(
         cls,
-        exc_type: str,
-        exc_value: str,
-        traceback_n: str,
+        exc_type: str = None,
+        exc_value: str = None,
+        traceback_n: str = None,
         thread: threading.Thread = None,
         process: multiprocessing.Process = None,
     ) -> None:
@@ -659,7 +651,10 @@ class Debugger(Object):
         line_number = cls.__caller_source.lenght
         if cls.attach_hook:
             atexit.unregister(cls.exit_handler)
-        if isinstance(traceback_n, types.TracebackType):
+        if (
+            isinstance(traceback_n, types.TracebackType)
+            and cls.language == Language.python
+        ):
             traceback_nodes: List[str] = traceback.format_tb(traceback_n)
             traceback_node = traceback_nodes[-1]
             line_number: int = int(
@@ -966,9 +961,11 @@ class Debugger(Object):
 
     @classmethod
     @__check_status
-    def exit_handler(cls):
+    def exit_handler(cls, output: str = None):
         """
         Exit handler to be called on exit of the program.
+        Parameters:
+            output (str): Output of the executed code.
         """
         # Dispatch all test mode code blocks at exit
         tests: List[Dict] = cls.watch_logs.get(Mode.test, [])
@@ -979,6 +976,8 @@ class Debugger(Object):
                 context[Context.execution.value][
                     Context.status.value
                 ] = Code.success.value
+                if output:
+                    context[Context.execution.value][Context.output.value] = output
                 cls.dispatch(
                     Mode.test,
                     context,
@@ -1005,6 +1004,8 @@ class Debugger(Object):
                 ] = Code.success.value
                 context[Context.prompt.value][Context.referer.value] = Mode.fix.value
                 context[Context.prompt.value][Context.mode.value] = Mode.improve.value
+                if output:
+                    context[Context.execution.value][Context.output.value] = output
                 cls.dispatch(
                     Mode.fix,
                     context,

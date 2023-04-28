@@ -1,5 +1,6 @@
 from typing import Union, Dict, List, Any, Tuple, NamedTuple, Type, Generator, Optional
 import types
+import shutil
 from enum import Enum
 import ast
 from abc import ABC, abstractmethod, abstractclassmethod
@@ -59,6 +60,17 @@ engine = NamedTuple(
 io_object = NamedTuple("IO", [("path", str), ("stream", io.TextIOWrapper)])
 
 
+error_object = NamedTuple(
+    "Error",
+    [
+        ("exception_type", str),
+        ("exception_message", str),
+        ("full_traceback", str),
+        ("error_line", int),
+    ],
+)
+
+
 class Mode(str, Enum):
     """
     Enum for execution mode
@@ -81,6 +93,28 @@ class Language(str, Enum):
     ruby = "ruby"
     html = "html"
     shell = "shell"
+    text = "text"
+    rust = "rust"
+    java = "java"
+    php = "php"
+    typescript = "typescript"
+    css = "css"
+    sql = "sql"
+    dart = "dart"
+    kotlin = "kotlin"
+    swift = "swift"
+    r = "r"
+    csharp = "csharp"
+    scala = "scala"
+    elixir = "elixir"
+    erlang = "erlang"
+    haskell = "haskell"
+    julia = "julia"
+    lua = "lua"
+    perl = "perl"
+    matlab = "matlab"
+    cpp = "cpp"
+    scss = "scss"
 
 
 class Code(str, Enum):
@@ -147,3 +181,28 @@ class Os(str, Enum):
     mac = "darwin"
     windows32 = "win32"
     windows64 = "win64"
+
+
+class Executables(str, Enum):
+    python = "python"
+    python3 = "python3"
+    node = "node"
+    go = "go"
+    ruby = "ruby"
+    bash = "bash"
+    sh = "sh"
+    npm = "npm"
+    rust = "rustc"
+    cargo = "cargo"
+    clang = "clang"
+    gcc = "gcc"
+    java = "java"
+    javac = "javac"
+
+    def get(language: str, command: List[str]) -> List[str]:
+        executable: Executables = Executables.__dict__.get(Enums.members).get(language)
+        if executable:
+            exec_dir = shutil.which(executable.value)
+            if language == Language.python and not exec_dir:
+                exec_dir: str = shutil.which(Executables.python3.value)
+            return [exec_dir] + command

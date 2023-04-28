@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from sani.core.ops import RuntimeInfo, Os, TerminalCommand, os
-from sani.utils.custom_types import Dict
+from sani.utils.custom_types import Dict, Language, List, Mode
 from dotenv import load_dotenv
 import configparser
 
@@ -39,3 +39,76 @@ class Config:
     deactivate_exception_hooks: bool = os.getenv(
         "DEBUGGER_DEACTIVATE_EXCEPTION_HOOKS", False
     )
+
+    SOURCE_LANGUAGE_MAP: Dict[str, Language] = field(
+        default_factory=lambda: {
+            ".py": Language.python,
+            ".m4": Language.python,
+            ".nsi": Language.python,
+            # ".hpp": Language.cpp,
+            ".c": Language.c,
+            # ".h": Language.cpp,
+            # ".cs": Language.csharp,
+            # ".cpp": Language.cpp,
+            # ".scss": Language.scss,
+            # ".sep": Language.cpp,
+            # ".hxx": Language.cpp,
+            # ".cc": Language.cpp,
+            # ".css": Language.css,
+            # ".dart": Language.dart,
+            ".go": Language.go,
+            # ".hs": Language.haskell,
+            ".html": Language.html,
+            ".xml": Language.html,
+            ".java": Language.java,
+            ".js": Language.javascript,
+            ".jsx": Language.javascript,
+            # ".jl": Language.julia,
+            # ".kt": Language.kotlin,
+            # ".kts": Language.kotlin,
+            # ".ktm": Language.kotlin,
+            # ".m": Language.matlab,
+            # ".php": Language.php,
+            # ".pl": Language.perl,
+            # ".r": Language.r,
+            # ".R": Language.r,
+            ".rb": Language.ruby,
+            ".rs": Language.rust,
+            ".sh": Language.shell,
+            # ".sql": Language.sql,
+            # ".swift": Language.swift,
+            # ".scala": Language.scala,
+            # ".sc": Language.scala,
+            ".ts": Language.typescript,
+            ".tsx": Language.typescript,
+            # ".txt": Language.text,
+            # ".lic": Language.text,
+            # ".install": Language.text,
+            # ".OSS": Language.text,
+            # ".gl": Language.text,
+        }
+    )
+    compiled_languages: List[Language] = field(
+        default_factory=lambda: [Language.java, Language.c, Language.rust]
+    )
+    interpreted_languages: List[Language] = field(
+        default_factory=lambda: [
+            Language.go,
+            Language.python,
+            Language.javascript,
+            Language.typescript,
+        ]
+    )
+    instant_modes: List[Mode] = field(
+        default_factory=lambda: [
+            Mode.improve,
+            Mode.document,
+            Mode.analyze,
+        ]
+    )
+    atexit_modes: List[Mode] = field(default_factory=lambda: [Mode.fix, Mode.test])
+    prefix: str = "sani"
+    delimiter: str = ":"
+    seperator: str = "="
+    end_syntax: str = "sani:end"
+    runtime_recusive_limit: int = 5

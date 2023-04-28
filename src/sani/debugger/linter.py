@@ -116,9 +116,10 @@ class HtmlLinter(BaseLinter):
 
     linter_name = "htmllinter"
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs) -> None:
         from html_linter import lint
 
+        super().__init__(*args, **kwargs)
         self.lint = lint
 
     def get_report(self, filepath: str = None) -> str:

@@ -225,6 +225,39 @@ class ShellScript(BaseScript):
         super().__init__(*args, **kwargs)
 
 
+class RustScript(BaseScript):
+    """
+    Utility class to get a rust script information/attributes
+    """
+
+    script_type = Language.rust
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+
+class JavaLangScript(BaseScript):
+    """
+    Utility class to get a javascript script information/attributes
+    """
+
+    script_type = Language.javascript
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+
+class TypeScript(BaseScript):
+    """
+    Utility class to get a typescript script information/attributes
+    """
+
+    script_type = Language.typescript
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+
 class Script(Enum):
     python = PythonScript
     go = GoScript
@@ -233,3 +266,6 @@ class Script(Enum):
     ruby = RubyScript
     shell = ShellScript
     html = HtmlScript
+    rust = RustScript
+    typescript = TypeScript
+    java = JavaLangScript

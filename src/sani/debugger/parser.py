@@ -10,6 +10,7 @@ from sani.utils.custom_types import (
     Comment,
     Enum,
     Tuple,
+    Language,
 )
 from sani.utils.exception import UnterminatedCommentError
 
@@ -18,9 +19,16 @@ from sani.utils.exception import UnterminatedCommentError
 comment_parser library: https://github.com/jeanralphaviles/comment_parser/blob/master/comment_parser/parsers
 """
 
+# from nirjas import main
+
+
+# main.rust.rustExtractor
+
 
 class BaseParser(ABC):
     """Base class for parsers."""
+
+    language: Language = None
 
     def __init__(self, *args, **kwargs) -> None:
         self.args = args
@@ -41,13 +49,14 @@ class BaseParser(ABC):
 
 
 class PythonParser(BaseParser):
+    language = Language.python
     """This class provides methods for parsing comments from Python scripts."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def extract_attributes(
-        self, source: str
+        self, source: io.TextIOWrapper
     ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given Python script.
 
@@ -61,6 +70,7 @@ class PythonParser(BaseParser):
         Raises:
             tokenize.TokenError
         """
+        source: str = source.read()
         comments = []
         source_list = []
         lined_source = str()
@@ -79,11 +89,13 @@ class PythonParser(BaseParser):
 class GoParser(BaseParser):
     """This class provides methods for parsing comments from Go source code."""
 
+    language = Language.go
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def extract_attributes(
-        self, code: str
+        self, code: io.TextIOWrapper
     ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given Go source code.
 
@@ -106,9 +118,10 @@ class GoParser(BaseParser):
         UnterminatedCommentError: Encountered an unterminated multi-line
             comment.
         """
+        code: str = code.read()
         state = 0
         current_comment = ""
-        comments = []
+        comments: List[Comment] = []
         line_counter = 1
         comment_start = 1
         string_char = ""
@@ -203,7 +216,10 @@ class CParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
+    def extract_attributes(
+        self,
+        code: io.TextIOWrapper,
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given C family source code.
 
         Comments are represented with the Comment class found in the module.
@@ -224,6 +240,7 @@ class CParser(BaseParser):
             UnterminatedCommentError: Encountered an unterminated multi-line
             comment.
         """
+        code: str = code.read()
         pattern = r"""
             (?P<literal> (\"([^\"\n])*\")+) |
             (?P<single> //(?P<single_content>.*)?$) |
@@ -264,10 +281,15 @@ class CParser(BaseParser):
 
 
 class JsParser(BaseParser):
+    language = Language.rust
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
+    def extract_attributes(
+        self,
+        code: io.TextIOWrapper,
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given Javascript source code.
 
         Comments are represented with the Comment class found in the module.
@@ -287,6 +309,7 @@ class JsParser(BaseParser):
             UnterminatedCommentError: Encountered an unterminated multi-line
             comment.
         """
+        code: str = code.read()
         state = 0
         source_list = []
         lined_source = str()
@@ -372,10 +395,15 @@ class JsParser(BaseParser):
 
 
 class HtmlParser(BaseParser):
+    language = Language.html
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
+    def extract_attributes(
+        self,
+        code: io.TextIOWrapper,
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given HTML family source code.
 
         Comments are represented with the Comment class found in the module.
@@ -390,6 +418,7 @@ class HtmlParser(BaseParser):
             UnterminatedCommentError: Encountered an unterminated multi-line
             comment.
         """
+        code: str = code.read()
         lined_source = str()
         pattern = r"""
             (?P<literal> (\"([^\"\n])*\")+) |
@@ -429,10 +458,15 @@ class HtmlParser(BaseParser):
 
 
 class RubyParser(BaseParser):
+    language = Language.ruby
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
+    def extract_attributes(
+        self,
+        code: io.TextIOWrapper,
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given Ruby source code.
 
         Comments are represented with the Comment class found in the module.
@@ -445,6 +479,7 @@ class RubyParser(BaseParser):
         Returns:
             Python list of Comment in the order that they appear in the code..
         """
+        code: str = code.read()
         pattern = r"""
             (?P<literal> ([\"'])((?:\\\2|(?:(?!\2)).)*)(\2)) |
             (?P<single> \#(?P<single_content>.*?)$)
@@ -476,10 +511,15 @@ class RubyParser(BaseParser):
 
 
 class ShellParser(BaseParser):
+    language = Language.shell
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def extract_attributes(code: str) -> Tuple[List[Comment], List[str], str, int, str]:
+    def extract_attributes(
+        self,
+        code: io.TextIOWrapper,
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
         """Extracts a list of comments from the given shell script.
 
         Comments are represented with the Comment class found in the module.
@@ -494,14 +534,17 @@ class ShellParser(BaseParser):
         Returns:
         Python list of Comment in the order that they appear in the code.
         """
+        code: str = code.read()
         state = 0
         string_char = ""
         current_comment = ""
         comments = []
         source_list = []
+        line_char = str()
         lined_source = str()
         line_counter = 1
         for char in code:
+            line_char += char
             if state == 0:
                 # Waiting for comment start character, beginning of string,
                 # or escape character.
@@ -547,6 +590,71 @@ class ShellParser(BaseParser):
         return comments, source_list, lined_source, line_counter, code
 
 
+class RustParser(BaseParser):
+    language = Language.rust
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def extract_attributes(
+        self,
+        code: io.TextIOWrapper,
+    ) -> Tuple[List[Comment], List[str], str, int, str]:
+        source_list = []
+        pattern: re.Pattern = r"""(?<![pst'"`]:)\/\/\s*(.*)"""
+        comments: List[Comment] = []
+        start_syntax: str = "/*"
+        end_syntax: str = "*/"
+        lined_source: str = str()
+        copy: bool = False
+        line_counter = 0
+        content: str = str()
+        source = str()
+        for line_number, line in enumerate(code, start=1):
+            line_counter += 1
+            if start_syntax in line:
+                copy = True
+                startline = line_number
+                line = line[line.find(start_syntax) + len(start_syntax) :]
+            if end_syntax in line:
+                copy = False
+                line = line[: line.rfind(end_syntax) + len(end_syntax)]
+                # content = content + line.replace("\n", " ")
+                content = content.strip(start_syntax).strip(end_syntax).strip()
+                content = content.strip(start_syntax).strip(end_syntax).strip()
+                endline = line_number
+                comments.append(Comment(content, startline, multiline=True))
+                content = str()
+                continue
+            if copy:
+                content += line.replace("\n", " ").strip()
+            else:
+                match = re.findall(pattern, line, re.I)
+                match = "".join(match)
+                if match:
+                    comment = Comment(match.strip(), line_number, multiline=False)
+                    comments.append(comment)
+            lined_source += f"{line_number}:{line}"
+            source_list.append(line)
+            source += line
+
+        return comments, source_list, lined_source, line_counter, source
+
+
+class JavaParser(RustParser):
+    language = Language.java
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+class TypeScriptParser(RustParser):
+    language = Language.typescript
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
 class Parser(Enum):
     python = PythonParser
     javascript = JsParser
@@ -555,3 +663,6 @@ class Parser(Enum):
     ruby = RubyParser
     shell = ShellParser
     go = GoParser
+    rust = RustParser
+    java = JavaParser
+    typescript = TypeScriptParser
