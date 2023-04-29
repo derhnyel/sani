@@ -1,15 +1,14 @@
 import psutil  # https://psutil.readthedocs.io/en/latest/
-from sani.utils.custom_types import List, Tuple
+from sani.utils.custom_types import List, Tuple, types, Enum, Os
 import inspect
-from enum import Enum
 import time
 import sys
 import os
 import subprocess
-import types
 import distro
-import platform  # https://docs.python.org/3/library/platform.html
-import resource  # https://docs.python.org/3/library/resource.html
+
+# import platform  # https://docs.python.org/3/library/platform.html
+# import resource  # https://docs.python.org/3/library/resource.html
 
 
 class OsProcess:
@@ -71,19 +70,6 @@ class OsProcess:
         except Exception as e:
             pass
         return output.decode("utf-8")
-
-
-class Os(str, Enum):
-    """
-    Operating Systems Enum
-    """
-
-    linux = "linux"
-    linux2 = "linux2"
-    ubuntu = "ubuntu"
-    mac = "darwin"
-    windows32 = "win32"
-    windows64 = "win64"
 
 
 class TerminalCommand(str, Enum):

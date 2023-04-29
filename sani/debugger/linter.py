@@ -1,5 +1,4 @@
-from enum import Enum
-from abc import ABC, abstractmethod
+from sani.utils.custom_types import Enum, ABC, abstractmethod
 
 
 class BaseLinter(ABC):
@@ -85,6 +84,53 @@ class Flake8Linter(BaseLinter):
         return suggestions
 
 
+class PyJsLint(BaseLinter):
+    """
+    The PyJsLint class which inherits from the BaseLinter class
+    """
+
+    linter_name = "pyjslint"
+
+    def __init__(self, *args, **kwargs) -> None:
+        from pyjslint import check_JSLint
+
+        super().__init__(*args, **kwargs)
+        self.pyjslint = check_JSLint
+
+    def get_report(self, filepath: str = None) -> str:
+        """
+        Get a report from the linter
+        """
+        if filepath or (self.kwargs.get("filepath")):
+            with open(filepath or self.kwargs.get("filepath")) as f:
+                suggestions = ("\n").join(self.pyjslint(f.read()))
+        elif self.kwargs.get("source_code"):
+            suggestions = ("\n").join(self.pyjslint(self.kwargs.get("source_code")))
+        return suggestions
+
+
+class HtmlLinter(BaseLinter):
+    """
+    The HtmlLinter class which inherits from the BaseLinter class
+    """
+
+    linter_name = "htmllinter"
+
+    def __init__(self, *args, **kwargs) -> None:
+        from html_linter import lint
+
+        super().__init__(*args, **kwargs)
+        self.lint = lint
+
+    def get_report(self, filepath: str = None) -> str:
+        if filepath or (self.kwargs.get("filepath")):
+            with open(filepath or self.kwargs.get("filepath")) as f:
+                suggestions = self.lint(f.read())
+        elif self.kwargs.get("source_code"):
+            suggestions = self.lint(self.kwargs.get("source_code"))
+        return suggestions
+
+
 class Linter(Enum):
     """
     Enum for linters
@@ -92,4 +138,6 @@ class Linter(Enum):
 
     flake8 = Flake8Linter
     pylint = PyLinter
+    pyjslint = PyJsLint
+    htmllint = HtmlLinter
     disable = None

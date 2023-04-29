@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "sani"
+version = "0.1.0"
+description = "An advanced ai-powered debugger for building better software."
+authors = ["Daniel Eje <ejedenials@gmail.com>", "Haile Lagi <52631736+hailelagi@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+psutil = "^5.9.5"
+python-dotenv = "^1.0.0"
+distro = "^1.8.0"
+astor = "^0.8.1"
+pyjslint = "^0.3.4"
+pylint = "^2.17.3"
+flake8 = "^6.0.0"
+html-linter = "^0.4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
