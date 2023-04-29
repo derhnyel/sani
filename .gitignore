@@ -11,4 +11,4 @@
 *.env*
 *DS_Store
 *old*
-*example*
+# *example*
