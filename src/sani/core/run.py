@@ -6,12 +6,9 @@ import os
 from sani.utils.custom_types import Os, Language, List, Executables, Tuple, types
 from pathlib import Path
 from sani.core.config import Config
-
-# from sani.utils.logger import get_logger
 from sani.utils.exception import UnsupportedError
 
 config = Config()
-# logger = get_logger(__name__)
 
 
 class ScriptRun:
@@ -63,7 +60,6 @@ class ScriptRun:
             target=self.read,
             args=(process.stderr, [pipe_queue.put, errors.append]),
         )
-
         writer_thread: Thread = Thread(
             target=self.write, args=(pipe_queue.get,)
         )  # Thread for printing items in the queue
@@ -72,20 +68,12 @@ class ScriptRun:
         for thread in (stdout_thread, stderr_thread, writer_thread):
             thread.daemon = True
             thread.start()
-
         process.wait()
-
         for thread in (stdout_thread, stderr_thread):
             thread.join()
-
         pipe_queue.put(None)
-
         output = " ".join(output)
         errors = " ".join(errors)
-
-        # if "java" != command[0] and not os.path.isfile(command[1]): # File doesn't exist, for java, command[1] is a class name instead of a file
-        #    return (None, None)
-        # else:
         return (output, errors)
 
     @staticmethod

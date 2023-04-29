@@ -83,6 +83,9 @@ class Debugger(Object):
                     stdin (string): The path to the log file which stdin would be redirected to.
                     stdout (string): The path to the log file which stdout would be redirected to.
         """
+        cls.run_as_main: bool = run_as_main
+        cls.attach_hook: bool = attach_hook
+        cls.language = language
         if not Linter.__dict__.get(Enums.members).get(linter):
             linter = Linter.disable.name
             logger.warning(
@@ -151,20 +154,16 @@ class Debugger(Object):
                     cls.__caller_source.string
                 )
                 cls.caller_comments = cls.__script.comments
-                # logger.debug(
-                #     f"Debugger is active in module. Debugger is using {cls.__script} "
-                # )
-                # logger.debug(f"This is the caller comments {cls.caller_comments}")
             else:
                 with open(cls.__caller, "r", encoding="utf-8") as code:
                     cls.__caller_source: script = cls.script_utils.get_attributes(code)
                 cls.caller_comments = cls.__caller_source.comments
             cls.__caller_pid: int = cls.process_utils.get_pid_of_current_process()
             cls.__source_lines: List[str] = cls.__caller_source.lines.copy()
-            cls.attach_hook: bool = attach_hook
-            cls.language = language
+
             cls.name = name or os.path.basename(cls.__caller)
             cls.lint_suggestions: str = str()
+
             if cls.linter:
                 cls.lint_suggestions: str = cls.linter.get_report(cls.__caller)
             if cls.attach_hook:
@@ -185,11 +184,6 @@ class Debugger(Object):
                 *args,
                 **kwargs,
             )
-        #     logger.debug(
-        #         f"Debugger instance created. Debugger is ready to use. {cls.instance}"
-        #     )
-        # logger.debug(f"Here is your instance {cls.instance}")
-
         return cls.instance
 
     def __init__(
@@ -205,6 +199,12 @@ class Debugger(Object):
         """
         self.args = args
         self.kwargs = kwargs
+        self.assigned_var = None
+        if self.language == Language.python and self.run_as_main:
+            startline = self.runtime_info.get_stack_caller_frame().lineno
+            line = self.__caller_source.lines[startline - 1].split("=")
+            if len(line) > 1:
+                self.assigned_var = f"{line[0].strip()}"
 
     def __check_status(function: types.FunctionType) -> Any:
         """
@@ -239,6 +239,7 @@ class Debugger(Object):
             function: types.FunctionType,
         ) -> Any:
             startline = self.runtime_info.get_stack_caller_frame().lineno
+            # line = self.__caller_source.lines[startline-1]
 
             @wraps(function)
             def wrapper(*args, **kwargs) -> Any:
@@ -258,6 +259,7 @@ class Debugger(Object):
                     mode,
                     startline,
                     subject,
+                    remove_pattern=f"{self.assigned_var}.",
                 )
                 logger.debug(
                     f"method='WRAP'::mode='{mode.upper()}'::startline={startline}::endline={block.endline}::sync={sync}::subject='{subject}'"
@@ -303,10 +305,12 @@ class Debugger(Object):
         mode: str = self.get(Context.mode) or Mode.improve.value
         subject: str = self.get(Context.subject)
         startline: int = self.runtime_info.get_stack_caller_frame().lineno
+        line = self.__caller_source.lines[startline - 1]
         context, sync, block = self.build(
             mode,
             startline,
             subject=subject,
+            remove_pattern=f"{self.assigned_var}." or line,
         )
         if sync and mode in self.instant_modes:
             self.dispatch(mode, context, set_flag=True)
@@ -366,6 +370,7 @@ class Debugger(Object):
         endline: int,
         mode: str = None,
         subject: str = None,
+        remove_pattern: str = None,
     ):
         """
         Debug a code block within a codebase.
@@ -382,11 +387,13 @@ class Debugger(Object):
             and startline <= endline
             and endline <= self.__caller_source.lenght
         ):
+            # line = self.__caller_source.lines[startline-1]
             context, sync, block = self.build(
                 mode,
                 startline,
                 subject,
                 endline=endline,
+                remove_pattern=remove_pattern or f"{self.assigned_var}.",
             )
             if sync and mode in self.instant_modes:
                 self.dispatch(mode, context, set_flag=True)
@@ -443,6 +450,7 @@ class Debugger(Object):
         subject: str = None,
         syntax_format: str = Code.end_breakpoint.value,
         startline: int = None,
+        remove_pattern: str = None,
     ) -> None:
         """
         Start Debugger to monitor, redirect stderr to a log file and
@@ -455,12 +463,14 @@ class Debugger(Object):
         """
         mode = mode or Mode.improve.value
         startline = startline or self.runtime_info.get_stack_caller_frame().lineno
+        # line = self.__caller_source.lines[startline-1]
         context, sync, block = self.build(
             mode,
             startline,
             subject=subject,
             style=Code.syntax,
             syntax_format=syntax_format,
+            remove_pattern=remove_pattern or f"{self.assigned_var}.",
         )
         if sync and mode in self.instant_modes:
             self.dispatch(mode, context, set_flag=True)
@@ -681,8 +691,11 @@ class Debugger(Object):
         for fix in fixes:
             if (
                 fix.get(attribute.name) == attribute
-                and line_number >= test.get(Context.startline)
-                and line_number <= test.get(Context.endline)
+                and line_number >= fix.get(Context.startline)
+                and (
+                    line_number <= fix.get(Context.endline)
+                    or cls.language != Language.python
+                )
                 and not fix.get(Context.flag)
             ):
                 context: Dict = fix.get(Context.context)
@@ -709,7 +722,10 @@ class Debugger(Object):
                     test.get(attribute.name) == attribute
                     and not test.get(Context.flag)
                     and line_number >= test.get(Context.startline)
-                    and line_number <= test.get(Context.endline)
+                    and (
+                        line_number <= test.get(Context.endline)
+                        or cls.language != Language.python
+                    )
                 ):
                     context: Dict = test.get(Context.context)
                     context[Context.execution.value][Context.traceback.value] = {
@@ -742,6 +758,7 @@ class Debugger(Object):
         body_index: int = 0,
         syntax_format: str = None,
         replace_syntax: bool = True,
+        remove_pattern: str = None,
     ) -> Tuple[Dict, bool, block_object]:
         """
         Build the context and code block for a specific mode.
@@ -754,6 +771,7 @@ class Debugger(Object):
             body_index (int): Index of the body of the code block. Default is `0`.
             syntax_format (str): Syntax format of the code block. Default is `None`.
             replace_syntax (bool): Replace syntax of the code block. Default is `True`.
+            remove_pattern (str): Remove pattern of the code block. Default is `None`.
         Returns:
             context (Dict): Context for the cli-engine.
             sync (bool): Sync status of the code block.
@@ -767,6 +785,7 @@ class Debugger(Object):
             body_index,
             syntax_format,
             replace_syntax,
+            remove_pattern,
         )
         if not block.block:
             return {}, False, block
@@ -794,6 +813,7 @@ class Debugger(Object):
         body_index: int = 0,
         syntax_format: str = None,
         replace_syntax: bool = True,
+        remove_pattern: str = None,
     ) -> block_object:
         """
         Build the code block from the source file.
@@ -804,9 +824,31 @@ class Debugger(Object):
             body_index (int): Index of the body of the code block. Default is `0`.
             syntax_format (str): Syntax format of the code block. Default is `None`.
             replace_syntax (bool): Replace syntax of the code block. Default is `True`.
+            remove_pattern (str): Remove pattern of the code block. Default is `None`.
         Returns:
             block (NamedTuple): Code block.
         """
+
+        def omit(iter_list: List[str], pattern: str = None) -> str:
+            logger.debug(f"OMITTING: {pattern}")
+            result = ""
+            if remove_pattern:
+                for line in iter_list:
+                    if (
+                        pattern.strip().lower() in line.strip().lower()
+                        or pattern.strip().lower().replace(".", "(")
+                        in line.strip().lower()
+                    ):
+                        logger.debug(f"OMITTED: {line.strip()}")
+                        continue
+                    result += line
+            else:
+                result = ("").join(iter_list)
+            return result
+
+        print(
+            f"startline: {startline}, endline: {endline}, style: {style}, body_index: {body_index}, syntax_format: {syntax_format}, replace_syntax: {replace_syntax}, remove_pattern: {remove_pattern}"
+        )
         try:
             if not endline:
                 endline = self.__caller_source.lenght
@@ -833,19 +875,16 @@ class Debugger(Object):
                         if self.language == Language.python
                         else None
                     )
-                    block = (
-                        self.script_utils.get_script_from_ast(block_ast)
-                        if block_ast
-                        else ("").join(
-                            self.__caller_source.lines[startline - 1 : endline - 1]
-                        )
+                    block = omit(
+                        self.__caller_source.lines[startline - 1 : endline - 1],
+                        remove_pattern,
                     )
                 elif style == Code.syntax:
                     for line in range(startline, endline):
                         if syntax_format.lower() in self.__source_lines[line].lower():
                             # Maintain end syntax.
                             if replace_syntax:
-                                # Remove so another syntax method would find its end syntax
+                                # Remove so another break point method would find its end syntax
                                 self.__source_lines.pop(line)
                                 self.__source_lines.insert(
                                     line,
@@ -853,8 +892,9 @@ class Debugger(Object):
                                 )
                             endline = line + 1
                             break
-                    block = ("").join(
-                        self.__caller_source.lines[startline - 1 : endline - 1]
+                    block = omit(
+                        self.__caller_source.lines[startline - 1 : endline - 1],
+                        remove_pattern,
                     )
                     block_ast: ast.AST = (
                         self.script_utils.get_ast(block)
@@ -866,8 +906,9 @@ class Debugger(Object):
                     self.script_utils.get_comments(block_ast) if block_ast else None
                 )
             else:
-                block = ("").join(
-                    self.__caller_source.lines[startline - 1 : endline - 1]
+                block = omit(
+                    self.__caller_source.lines[startline - 1 : endline - 1],
+                    remove_pattern,
                 )
 
                 block_ast = (
@@ -945,6 +986,7 @@ class Debugger(Object):
                 Context.code_ast_dump.value: self.__caller_source.ast_dump,
                 Context.linenos.value: str(self.__caller_source.lenght),
                 Context.block_ast.value: block_ast_dump,
+                Context.language.value: self.language,
             },
             Context.prompt.value: {
                 Context.suggestions.value: {

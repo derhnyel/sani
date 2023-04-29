@@ -196,8 +196,8 @@ class Executables(str, Enum):
     cargo = "cargo"
     clang = "clang"
     gcc = "gcc"
-    java = "java"
-    javac = "javac"
+    javac = "java"
+    java = "javac"
 
     def get(language: str, command: List[str]) -> List[str]:
         executable: Executables = Executables.__dict__.get(Enums.members).get(language)

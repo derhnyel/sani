@@ -21,14 +21,15 @@ def handler(
     args: Tuple = tuple(),
 ):
     script: ScriptRun = ScriptRun(caller, executable, *args)
-    debugger = Debugger(
+    debugger: Debugger = Debugger(
         name=script.file_path.name,
-        language=script.language,
+        language=script.language.value,
         channel=channel,
         linter=linter,
         caller=caller,
         attach_hook=False,
         run_as_main=False,
+        stdout="test.txt",
     )
     trigger: dict = {}
 
@@ -65,6 +66,7 @@ def handler(
                         int(trigger.get(Context.endline)),
                         trigger.get(Context.mode),
                         trigger.get(Context.subject),
+                        remove_pattern=f"{config.prefix}",  # {config.delimiter}",
                     )
                 elif trigger.get(Context.mode):
                     debugger.breakpoint(
@@ -72,7 +74,9 @@ def handler(
                         trigger.get(Context.subject),
                         syntax_format=config.end_syntax or Code.end_syntax.value,
                         startline=comment.lineno,
+                        remove_pattern=f"{config.prefix}",  # {config.delimiter}",
                     )
+
     output, error = script.run()
     if error:
         debugger.dispatch_on_error(traceback_n=error)
