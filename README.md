@@ -1,7 +1,7 @@
 # Sani 🤖⚙️😎
 
 Hello there, I am `Sani`:
-An advanced AI-powered debugger for building better software. 
+An advanced AI-powered debugger for building better software.
 
 I integrate AI directly into your codebase by making it blend in with your prefered language syntax.
 My name is derived from the `Hausa` word for knowledge, as i have access to a wide range of resources for energizing your codebase with ai also, I can analyze any codebase for issues and provide the best solution there is.
@@ -12,7 +12,15 @@ My name is derived from the `Hausa` word for knowledge, as i have access to a wi
 
 ## Installation
 
+If you'd like to get started with contributing, you'll need [poetry](https://python-poetry.org/docs/#installation):
+
+```bash
+poetry install
+poetry run
+```
+
 ## Concepts
+
 ### Debugger
 
 Sani-Debugger is an AI debugger designed to help developers quickly identify and fix bugs in their code.
