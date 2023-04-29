@@ -70,7 +70,7 @@ class PythonParser(BaseParser):
         Raises:
             tokenize.TokenError
         """
-        source: str = source.read()
+        source: str = source.read() if isinstance(source, io.TextIOWrapper) else source
         comments = []
         source_list = []
         lined_source = str()

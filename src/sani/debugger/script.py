@@ -1,4 +1,5 @@
 import os
+import io
 import astor
 import linecache
 from sani.utils.custom_types import Any, Generator, script, ast, Enum, Language
@@ -26,7 +27,7 @@ class BaseScript:
         Get a report from the script
         """
 
-    def get_attributes(self, source_code: str) -> script:
+    def get_attributes(self, source_code: io.TextIOWrapper) -> script:
         (
             comments,
             source_list,
@@ -35,7 +36,15 @@ class BaseScript:
             code,
         ) = self.parser.extract_attributes(source_code)
         return script(
-            lenght, source_list, code, lined_source, None, None, None, None, comments
+            lenght,
+            source_list,
+            code,
+            lined_source,
+            None,
+            None,
+            None,
+            comments,
+            None,
         )
 
     def get_script_path(self, file: str) -> str:

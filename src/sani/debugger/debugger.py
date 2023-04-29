@@ -83,17 +83,17 @@ class Debugger(Object):
                     stdin (string): The path to the log file which stdin would be redirected to.
                     stdout (string): The path to the log file which stdout would be redirected to.
         """
-        if linter not in Linter.__dict__.get(Enums.members):
+        if not Linter.__dict__.get(Enums.members).get(linter):
             linter = Linter.disable.name
             logger.warning(
-                f"{linter} Linter Not Supported by Debugger. Linter has been disabled."
+                f" {linter} Linter Not Supported by Debugger. Linter has been disabled."
             )
-        elif channel not in Channel.__dict__.get(Enums.members):
+        elif not Channel.__dict__.get(Enums.members).get(channel):
             channel = Channel.io.name
             logger.warning(
                 f"{channel} Channel Not Supported by Debugger. Default io selected."
             )
-        elif language not in Language.__dict__.get(Enums.members):
+        elif not Language.__dict__.get(Enums.members).get(language):
             language = Language.python.name
             logger.warning(
                 f"{language} Language Not Supported by Debugger. Default python selected."
@@ -150,11 +150,15 @@ class Debugger(Object):
                 cls.__script: script = cls.script_utils.get_attributes(
                     cls.__caller_source.string
                 )
-                cls.__caller_comments = cls.__script.comments
+                cls.caller_comments = cls.__script.comments
+                # logger.debug(
+                #     f"Debugger is active in module. Debugger is using {cls.__script} "
+                # )
+                # logger.debug(f"This is the caller comments {cls.caller_comments}")
             else:
                 with open(cls.__caller, "r", encoding="utf-8") as code:
                     cls.__caller_source: script = cls.script_utils.get_attributes(code)
-                cls.__caller_comments = cls.__caller_source.comments
+                cls.caller_comments = cls.__caller_source.comments
             cls.__caller_pid: int = cls.process_utils.get_pid_of_current_process()
             cls.__source_lines: List[str] = cls.__caller_source.lines.copy()
             cls.attach_hook: bool = attach_hook
@@ -181,6 +185,10 @@ class Debugger(Object):
                 *args,
                 **kwargs,
             )
+        #     logger.debug(
+        #         f"Debugger instance created. Debugger is ready to use. {cls.instance}"
+        #     )
+        # logger.debug(f"Here is your instance {cls.instance}")
 
         return cls.instance
 
@@ -434,6 +442,7 @@ class Debugger(Object):
         mode: str = None,
         subject: str = None,
         syntax_format: str = Code.end_breakpoint.value,
+        startline: int = None,
     ) -> None:
         """
         Start Debugger to monitor, redirect stderr to a log file and
@@ -442,9 +451,10 @@ class Debugger(Object):
             mode (str): Debugger mode. Default is `improve`.
             subject (str): A user defined  subject.
             syntax_format (str): The syntax format to use for the end breakpoint.
+            startline (int): The line number where the code block starts.
         """
         mode = mode or Mode.improve.value
-        startline = self.runtime_info.get_stack_caller_frame().lineno
+        startline = startline or self.runtime_info.get_stack_caller_frame().lineno
         context, sync, block = self.build(
             mode,
             startline,
@@ -944,7 +954,7 @@ class Debugger(Object):
                     },
                     Context.block_comments.value: block_comments,
                     Context.subject.value: subject,
-                    Context.comments.value: self.__caller_comments,
+                    Context.comments.value: self.caller_comments,
                 },
                 Context.mode.value: mode,
                 Context.referer.value: referer,

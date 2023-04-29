@@ -206,3 +206,7 @@ class Executables(str, Enum):
             if language == Language.python and not exec_dir:
                 exec_dir: str = shutil.which(Executables.python3.value)
             return [exec_dir] + command
+
+    def get_custom_exec(executable: str, command: List[str]) -> List[str]:
+        exec_dir = shutil.which(executable)
+        return [exec_dir] + command

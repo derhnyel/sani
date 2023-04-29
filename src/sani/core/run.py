@@ -6,11 +6,12 @@ import os
 from sani.utils.custom_types import Os, Language, List, Executables, Tuple, types
 from pathlib import Path
 from sani.core.config import Config
-from sani.utils.logger import get_logger
+
+# from sani.utils.logger import get_logger
 from sani.utils.exception import UnsupportedError
 
 config = Config()
-logger = get_logger(__name__)
+# logger = get_logger(__name__)
 
 
 class ScriptRun:
@@ -25,7 +26,7 @@ class ScriptRun:
             raise UnsupportedError(f"Language not supported for {file_path}")
         command: List[str] = [file_path] + list(self.args)
         self.command: List[str] = (
-            [executable] + command
+            Executables.get_custom_exec(executable, command)
             if executable
             else Executables.get(self.language, command)
         )
