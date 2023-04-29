@@ -1,22 +1,25 @@
 # Sani 🤖⚙️😎
 
 Hello there, I am `Sani`:
-An advanced AI-powered tool for building better softwares. I integrate AI directly into your codebase by making it blend in with your prefered language syntax.
+An advanced AI-powered debugger for building better software. 
+
+I integrate AI directly into your codebase by making it blend in with your prefered language syntax.
 My name is derived from the `Hausa` word for knowledge, as i have access to a wide range of resources for energizing your codebase with ai also, I can analyze any codebase for issues and provide the best solution there is.
 
-## Support Languages
+## Supported Languages
 
 - Python
 
 ## Installation
 
-## Debugger
+## Concepts
+### Debugger
 
 Sani-Debugger is an AI debugger designed to help developers quickly identify and fix bugs in their code.
 Sani-Debugger can detect and isolate bugs in real-time, providing detailed information on the root cause and potential solutions.
 With Sani-Debugger's help, developers can increase their productivity and deliver high-quality software products faster
 
-### Modes
+#### Modes
 
 - `test`: Write `Test` for the code block and run it to check if it passes.
 - `fix`: `Fix` errors and suggest making changes to the code block.
