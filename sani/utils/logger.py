@@ -26,3 +26,7 @@ def get_logger(format_str: str = None) -> logging.Logger:
     _LOGGER.addHandler(console_handler)
 
     return _LOGGER
+
+    # logging.basicConfig(level=logging.INFO,
+    #                     format='%(asctime)s - %(message)s',
+    #                     datefmt='%Y-%m-%d %H:%M:%S')

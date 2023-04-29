@@ -198,6 +198,7 @@ class Executables(str, Enum):
     gcc = "gcc"
     javac = "java"
     java = "javac"
+    typescript = "tsc"
 
     def get(language: str, command: List[str]) -> List[str]:
         executable: Executables = Executables.__dict__.get(Enums.members).get(language)

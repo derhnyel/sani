@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 class Debugger(Object):
     """
     Debugger class to debug and capture errors within a script at runtime.
-    * `start` and `stop` methods to spawn a new terminal session to monitor script i.e daemonic threads can also be used. (python module only)
+    * `breakpoint` and `stop` methods to spawn a new terminal session to monitor script i.e daemonic threads can also be used. (python module only)
     * `debug` method to debug a range of lines within the script at runtime. (for all languages)
     * `wrap` decorator method to debug a function within the script at runtime. (python module only)
     * Use a `with` statement to debug a block of code within the script at runtime. (python module only)
@@ -570,7 +570,7 @@ class Debugger(Object):
         index: int = None,
     ) -> bool:
         """
-        Update the watch logs, which keep track of all debugger mode calls and thier attributes.
+        Update the watch logs, which keep track of all debugger mode calls and their attributes.
         Parameters:
             mode (str): Debugger mode. Default is `improve`.
             context (Dict): Context for the cli-engine.
@@ -846,9 +846,6 @@ class Debugger(Object):
                 result = ("").join(iter_list)
             return result
 
-        print(
-            f"startline: {startline}, endline: {endline}, style: {style}, body_index: {body_index}, syntax_format: {syntax_format}, replace_syntax: {replace_syntax}, remove_pattern: {remove_pattern}"
-        )
         try:
             if not endline:
                 endline = self.__caller_source.lenght

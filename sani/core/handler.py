@@ -29,7 +29,7 @@ def handler(
         caller=caller,
         attach_hook=False,
         run_as_main=False,
-        stdout="test.txt",
+        stdout="./example/example.txt",
     )
     trigger: dict = {}
 
