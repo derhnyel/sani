@@ -57,5 +57,10 @@ pub mod outer_module {
        A nice one bosss maybe tomorrow
        */
 
-    /// Where is my item?
+    // Where is my item?
+}
+
+// sani document
+fn main() {
+    println!("{}", "Hello world!");
 }
