@@ -45,7 +45,10 @@ class Debugger(Object):
     watch_logs: Dict = dict()
     instant_modes: List[Mode] = config.instant_modes
     atexit_modes: List[Mode] = config.atexit_modes
+    on_error_modes: List[Mode] = config.on_error_modes
     skip_errors: List[BaseException] = [KeyboardInterrupt, SystemExit, GeneratorExit]
+    redirect_on_error: Mode = config.redirect_on_error
+    redirect_atexit: Mode = config.redirect_atexit
 
     def __new__(
         cls,
@@ -221,7 +224,7 @@ class Debugger(Object):
 
     def wrap(
         self,
-        mode: str = None,
+        mode: str = Mode.improve.value,
         subject: str = None,
     ) -> Any:
         """
@@ -233,7 +236,7 @@ class Debugger(Object):
         Returns:
             A result object from executed function.
         """
-        mode = mode or Mode.improve.value
+        mode = self.__set_mode(mode, "wrap")
 
         def wrap(
             function: types.FunctionType,
@@ -248,7 +251,7 @@ class Debugger(Object):
                     or inspect.isawaitable(function)
                     or inspect.iscoroutine(function)
                 )
-                if self.disable:
+                if self.disable or mode not in Mode.__dict__.get(Enums.members):
                     exc_output = (
                         asyncio.run(function(*args, **kwargs))
                         if check
@@ -271,15 +274,15 @@ class Debugger(Object):
                     if check
                     else function(*args, **kwargs)
                 )
-                if mode in self.atexit_modes and sync:
+                if (mode in self.atexit_modes or mode in self.on_error_modes) and sync:
                     # after sending ... set the flag to True for non-atexit dispatches
-                    if mode == Mode.fix:
+                    if mode in self.on_error_modes:
                         context[Context.prompt.value][
                             Context.referer.value
-                        ] = Mode.fix.value
+                        ] = mode.lower()
                         context[Context.prompt.value][
                             Context.mode.value
-                        ] = Mode.improve.value
+                        ] = self.redirect_on_error
                     context[Context.execution.value][Context.output.value] = str(
                         exc_output
                     )
@@ -303,6 +306,9 @@ class Debugger(Object):
             subject (str): The subject of the code block.
         """
         mode: str = self.get(Context.mode) or Mode.improve.value
+        mode = self.__set_mode(mode, "with")
+        if not mode:
+            return
         subject: str = self.get(Context.subject)
         startline: int = self.runtime_info.get_stack_caller_frame().lineno
         line = self.__caller_source.lines[startline - 1]
@@ -336,27 +342,29 @@ class Debugger(Object):
         if exc_type or exc_value or traceback:
             # On error let the exception handler handle dispatch
             return
-        # On success dispatch fix/test modes
-        tests = self.watch_logs.get(Mode.test, [])
-        fixes = self.watch_logs.get(Mode.fix, [])
 
-        def dispatch(attribute: dict):
-            context = attribute.get(Context.context)
-            context[Context.execution.value][Context.status.value] = Code.success.value
-            mode = context.get(Context.prompt)[Context.mode]
-            if mode == Mode.fix:
-                context[Context.prompt.value][Context.referer.value] = Mode.fix.value
-                context[Context.prompt.value][Context.mode.value] = Mode.improve.value
-            self.dispatch(mode, context, set_flag=True)
+        # On success dispatch at_exit / on_error modes
+        def dispatch(mode):
+            watch_logs = self.watch_logs.get(mode, [])
+            if watch_logs:
+                log = watch_logs[-1]
+                if startline == log[Context.startline]:
+                    context: Dict = log.get(Context.context)
+                    context[Context.execution.value][
+                        Context.status.value
+                    ] = Code.success.value
+                    mode: str = context.get(Context.prompt)[Context.mode]
+                    if mode in self.on_error_modes:
+                        context[Context.prompt.value][
+                            Context.referer.value
+                        ] = mode.lower()
+                        context[Context.prompt.value][
+                            Context.mode.value
+                        ] = self.redirect_on_error
+                    self.dispatch(mode, context, set_flag=True)
 
-        if tests:
-            test = tests[-1]
-            if startline == test[Context.startline]:
-                dispatch(test)
-        if fixes:
-            fix = fixes[-1]
-            if startline == fix[Context.startline]:
-                dispatch(fix)
+        for mode in self.atexit_modes + self.on_error_modes:
+            dispatch(mode)
 
     @__check_status
     def __call__(self, *args, **kwargs):
@@ -368,7 +376,7 @@ class Debugger(Object):
         self,
         startline: int,
         endline: int,
-        mode: str = None,
+        mode: str = Mode.improve.value,
         subject: str = None,
         remove_pattern: str = None,
     ):
@@ -380,7 +388,9 @@ class Debugger(Object):
             mode (str): The debugger mode to run the function. Defaults to `improve`.
             subject (str): The subject of the code block.
         """
-        mode = mode or Mode.improve.value
+        mode = self.__set_mode(mode, "debug")
+        if not mode:
+            return
         if (
             startline > 0
             and endline > 0
@@ -443,10 +453,20 @@ class Debugger(Object):
             return
         cls.dispatch_on_error(exc_type, exc_value, exc_traceback, thread, process)
 
+    def __set_mode(self, mode: str, method: str = None) -> str:
+        if mode:
+            mode = mode.lower()
+        if mode not in Mode.__dict__.get(Enums.members):
+            logger.error(
+                f"method `{method.upper()}` :: mode '{mode.upper()}' is not supported."
+            )
+            mode = None
+        return mode
+
     @__check_status
     def breakpoint(
         self,
-        mode: str = None,
+        mode: str = Mode.improve.value,
         subject: str = None,
         syntax_format: str = Code.end_breakpoint.value,
         startline: int = None,
@@ -461,7 +481,9 @@ class Debugger(Object):
             syntax_format (str): The syntax format to use for the end breakpoint.
             startline (int): The line number where the code block starts.
         """
-        mode = mode or Mode.improve.value
+        mode = self.__set_mode(mode, "breakpoint")
+        if not mode:
+            return
         startline = startline or self.runtime_info.get_stack_caller_frame().lineno
         # line = self.__caller_source.lines[startline-1]
         context, sync, block = self.build(
@@ -620,13 +642,13 @@ class Debugger(Object):
         """
         if (
             (
-                mode in [Mode.test]
+                mode in cls.atexit_modes
                 and context.get(Context.execution)[Context.status] == Code.success
             )
             or (mode in cls.instant_modes)
             or (
-                mode in [Mode.fix]
-                and context.get(Context.prompt)[Context.referer] == Mode.fix
+                mode in cls.on_error_modes
+                and context.get(Context.prompt)[Context.referer] in cls.on_error_modes
                 and context.get(Context.execution)[Context.status] == Code.success
             )
         ):
@@ -681,53 +703,28 @@ class Debugger(Object):
                 re.search(r"""line (\d+)""", traceback_node).group(1)
             )
             traceback_n = ("").join(traceback_nodes)
-        fixes: List[Dict[str, str]] = cls.watch_logs.get(Mode.fix, [])
-        tests: List[Dict[str, str]] = cls.watch_logs.get(Mode.test, [])
+
         process = process or multiprocessing.current_process()
         attribute = thread if thread and process else process
         logger.error(traceback_n)
         fixed = False  # Ensure a fix was defined for that block
-        # Dispatch all fix mode code blocks on error
-        for fix in fixes:
-            if (
-                fix.get(attribute.name) == attribute
-                and line_number >= fix.get(Context.startline)
-                and (
-                    line_number <= fix.get(Context.endline)
-                    or cls.language != Language.python
-                )
-                and not fix.get(Context.flag)
-            ):
-                context: Dict = fix.get(Context.context)
-                context[Context.execution.value][Context.traceback.value] = {
-                    Context.exception_type.value: str(exc_type),
-                    Context.exception_message.value: str(exc_value),
-                    Context.full_traceback.value: traceback_n,
-                    Context.error_line.value: None,
-                }
-                context[Context.execution.value][
-                    Context.status.value
-                ] = Code.failed.value
-                # Check the flag that indicates the mode has been dispatched
-                cls.channel.send(context)
-                logger.debug(
-                    f"DISPATCHED `on error` to the cli-engine for mode='{Mode.fix.upper()}'::startline={fix.get('startline')}::endline={fix.get('endline')}::error_line=None::error_type={exc_type}::error_message={exc_value}"
-                )
-                fixed = True
-                break
-        # convert all test to fixes.. but ensure there are in sync with fix mode
-        if not fixed:
-            for test in tests:
+        # Dispatch all on error modes code blocks on error
+
+        def dispatch(mode: str):
+            global fixed
+            watch_logs: List[Dict[str, str]] = cls.watch_logs.get(mode, [])
+            referer = None
+            for log in watch_logs:
                 if (
-                    test.get(attribute.name) == attribute
-                    and not test.get(Context.flag)
-                    and line_number >= test.get(Context.startline)
+                    log.get(attribute.name) == attribute
+                    and not log.get(Context.flag)
+                    and line_number >= log.get(Context.startline)
                     and (
-                        line_number <= test.get(Context.endline)
+                        line_number <= log.get(Context.endline)
                         or cls.language != Language.python
                     )
                 ):
-                    context: Dict = test.get(Context.context)
+                    context: Dict = log.get(Context.context)
                     context[Context.execution.value][Context.traceback.value] = {
                         Context.exception_type.value: str(exc_type),
                         Context.exception_message.value: str(exc_value),
@@ -737,15 +734,28 @@ class Debugger(Object):
                     context[Context.execution.value][
                         Context.status.value
                     ] = Code.failed.value
-                    context[Context.prompt.value][Context.mode.value] = Mode.fix
-                    context[Context.prompt.value][Context.referer.value] = Mode.test
+                    if mode in cls.atexit_modes:
+                        context[Context.prompt.value][
+                            Context.mode.value
+                        ] = cls.redirect_atexit
+                        context[Context.prompt.value][
+                            Context.referer.value
+                        ] = mode.lower()
+                        referer = mode.upper()
                     # Check the flag that indicates the mode has been dispatched
                     cls.channel.send(context)
                     logger.debug(
-                        f"DISPATCHED `on error` to the cli-engine for mode='{Mode.fix.upper()}'::referer='{Mode.test.upper()}::startline={test.get('startline')}::endline={test.get('endline')}::error_line=None::error_type={exc_type}::error_message={exc_value}'"
+                        f"DISPATCHED `on error` to the cli-engine for mode='{mode.upper()}'::referer='{referer}::startline={log.get('startline')}::endline={log.get('endline')}::error_line=None::error_type={exc_type}::error_message={exc_value}'"
                     )
                     fixed = True
                     break
+
+        for mode in cls.on_error_modes:
+            dispatch(mode)
+        # convert all at_exit to fixes.. but ensure there are in sync with fix mode.
+        if not fixed:
+            for mode in cls.atexit_modes:
+                dispatch(mode)
 
     @__check_status
     def build(
@@ -840,6 +850,13 @@ class Debugger(Object):
                         in line.strip().lower()
                     ):
                         logger.debug(f"OMITTED: {line.strip()}")
+                        if (
+                            line.strip().startswith("with")
+                            and self.language == Language.python
+                        ):
+                            strips = len(line) - len(line.lstrip())
+                            new_line = f"{' '*strips}def function():\n"
+                            result += new_line
                         continue
                     result += line
             else:
@@ -920,9 +937,9 @@ class Debugger(Object):
             return block_object(
                 block, startline, endline, block_ast_dump, block_comments
             )
-        except IndentationError as e:
+        except IndentationError or SyntaxError as e:
             logger.error(
-                f"Block startline={startline} to endline={endline} has the incorrect language syntax within it. Please select a valid language syntax block. "
+                f"Block startline={startline} to endline={endline} has the incorrect language syntax within it. Please select a valid language syntax block. {e} "
             )
             return block_object(None, startline, endline, None, None)
 
@@ -1010,53 +1027,49 @@ class Debugger(Object):
 
     @classmethod
     @__check_status
-    def exit_handler(cls, output: str = None):
+    def exit_handler(cls, output: str = None, lint_suggestions: str = None):
         """
         Exit handler to be called on exit of the program.
         Parameters:
             output (str): Output of the executed code.
         """
-        # Dispatch all test mode code blocks at exit
-        tests: List[Dict] = cls.watch_logs.get(Mode.test, [])
-        fixes: List[Dict] = cls.watch_logs.get(Mode.fix, [])
-        for test in tests:
-            if not test[Context.flag]:
-                context = test.get(Context.context)
-                context[Context.execution.value][
-                    Context.status.value
-                ] = Code.success.value
-                if output:
-                    context[Context.execution.value][Context.output.value] = output
-                cls.dispatch(
-                    Mode.test,
-                    context,
-                    dispatch_by_last_index=False,
-                )
-        # Redirect all fix modes to improve ... if the fix code block isnt within a previous improve code block
-        improvements: List[Dict] = cls.watch_logs.get(Mode.improve, [])
-        for fix in fixes:
-            if not fix[Context.flag]:
-                startline = fix.get(Context.startline)
-                endline = fix.get(Context.endline)
-                if any(
-                    [
-                        improve
-                        for improve in improvements
-                        if startline >= improve.get(Context.startline)
-                        and endline <= improve.get(Context.endline)
-                    ]
-                ):
-                    continue
-                context = fix.get(Context.context)
-                context[Context.execution.value][
-                    Context.status.value
-                ] = Code.success.value
-                context[Context.prompt.value][Context.referer.value] = Mode.fix.value
-                context[Context.prompt.value][Context.mode.value] = Mode.improve.value
-                if output:
-                    context[Context.execution.value][Context.output.value] = output
-                cls.dispatch(
-                    Mode.fix,
-                    context,
-                    dispatch_by_last_index=False,
-                )
+        redirect_logs: List[Dict] = cls.watch_logs.get(cls.redirect_on_error, [])
+
+        def dispatch(mode: str):
+            mode_logs: List[Dict] = cls.watch_logs.get(mode, [])
+            for log in mode_logs:
+                if not log[Context.flag]:
+                    context = log.get(Context.context)
+                    # Redirect all error modes to improve ... if the fix code block isnt within a previous improve code block
+                    if mode in cls.on_error_modes:
+                        if any(
+                            [
+                                improve
+                                for improve in redirect_logs
+                                if log.get(Context.startline)
+                                >= improve.get(Context.startline)
+                                and log.get(Context.endline)
+                                <= improve.get(Context.endline)
+                            ]
+                        ):
+                            continue
+                        context[Context.prompt.value][
+                            Context.referer.value
+                        ] = mode.lower()
+                        context[Context.prompt.value][
+                            Context.mode.value
+                        ] = cls.redirect_on_error
+                    # Dispatch all at exit mode and on_error code blocks at exit
+                    context[Context.execution.value][
+                        Context.status.value
+                    ] = Code.success.value
+                    if output:
+                        context[Context.execution.value][Context.output.value] = output
+                    cls.dispatch(
+                        mode,
+                        context,
+                        dispatch_by_last_index=False,
+                    )
+
+        for mode in cls.atexit_modes + cls.on_error_modes:
+            dispatch(mode)

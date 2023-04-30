@@ -106,9 +106,12 @@ class Config:
             Mode.analyze,
         ]
     )
-    atexit_modes: List[Mode] = field(default_factory=lambda: [Mode.fix, Mode.test])
+    atexit_modes: List[Mode] = field(default_factory=lambda: [Mode.test])
+    on_error_modes: List[Mode] = field(default_factory=lambda: [Mode.fix])
     prefix: str = "sani"
     delimiter: str = ":"
     seperator: str = "="
     end_syntax: str = "sani:end"
     runtime_recusive_limit: int = 5
+    redirect_on_error: str = Mode.improve.value
+    redirect_atexit: str = Mode.fix.value

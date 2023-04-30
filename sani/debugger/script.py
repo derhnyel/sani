@@ -1,7 +1,7 @@
-import os
 import io
 import astor
 import linecache
+from sani.core.ops import os
 from sani.utils.custom_types import Any, Generator, script, ast, Enum, Language
 from sani.debugger.parser import Parser, BaseParser
 
