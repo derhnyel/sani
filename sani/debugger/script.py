@@ -152,13 +152,17 @@ class PythonScript(BaseScript):
             lined_list.append(lined_text)
             lined_string += lined_text
             string += line
-        ast_object = PythonScript.get_ast(string)
+        # ast_object = PythonScript.get_ast(string)
+        ast_object = None
 
-        ast_dump = ast.dump(ast_object)
-        imports = ("").join(
-            [impt for impt in PythonScript.get_script_imports(ast_object)]
-        )
-        comments = PythonScript.get_comments(ast_object)
+        # ast_dump = ast.dump(ast_object)
+        ast_dump = None
+        # imports = ("").join(
+        #     [impt for impt in PythonScript.get_script_imports(ast_object)]
+        # )
+        imports = None
+        # comments = PythonScript.get_comments(ast_object)
+        comments = None
         return self.script(
             len(lines),
             lines,

@@ -17,7 +17,6 @@ from sani.utils.custom_types import (
     Context,
     Enums,
 )
-from pathlib import Path
 from sani.utils.utils import Object
 from sani.core.config import Config, Mode, Language
 from sani.utils.logger import get_logger
@@ -25,6 +24,7 @@ from sani.debugger.linter import Linter, BaseLinter
 from sani.core.channel import Channel, BaseCommChannel
 from sani.debugger.script import Script, BaseScript, ast
 from sani.core.ops import OsProcess, RuntimeInfo, inspect, os, sys
+from sani.utils.exception import CallerNotFoundError
 
 config = Config()
 logger = get_logger(__name__)
@@ -46,15 +46,15 @@ class Debugger(Object):
     instant_modes: List[Mode] = config.instant_modes
     atexit_modes: List[Mode] = config.atexit_modes
     on_error_modes: List[Mode] = config.on_error_modes
-    skip_errors: List[BaseException] = [KeyboardInterrupt, SystemExit, GeneratorExit]
-    redirect_on_error: Mode = config.redirect_on_error
-    redirect_atexit: Mode = config.redirect_atexit
+    skip_errors: List[str] = config.skip_errors
+    redirect_on_error: Dict[Mode, Mode] = config.redirect_on_error_mode
+    redirect_atexit: Dict[Mode, Mode] = config.redirect_atexit_mode
 
     def __new__(
         cls,
         name: str = None,
-        channel: str = Channel.io.name,
-        linter: str = Linter.disable.name,
+        channel: str = None,
+        linter: str = None,
         caller: str = None,
         attach_hook: bool = True,
         language: str = Language.python.name,
@@ -89,34 +89,50 @@ class Debugger(Object):
         cls.run_as_main: bool = run_as_main
         cls.attach_hook: bool = attach_hook
         cls.language = language
+        linter = linter or config.linter
+        channel = channel or config.channel
         if not Linter.__dict__.get(Enums.members).get(linter):
             linter = Linter.disable.name
-            logger.warning(
-                f" {linter} Linter Not Supported by Debugger. Linter has been disabled."
+            logger.debug(
+                f"`{linter}` linter not supported by DEBUGGER. Linter has been `DISABLED`."
             )
-        elif not Channel.__dict__.get(Enums.members).get(channel):
+        # Disable linter if it's not supported for a language
+        if (
+            linter not in config.linter_language_map.get(language, [])
+            and linter != Linter.disable.name
+        ):
+            logger.debug(
+                f"`{linter}` linter is not supported by `{language}` language. Linter has been `DISABLED`. "
+            )
+            linter = Linter.disable.name
+
+        if not Channel.__dict__.get(Enums.members).get(channel):
             channel = Channel.io.name
-            logger.warning(
-                f"{channel} Channel Not Supported by Debugger. Default io selected."
+            logger.debug(
+                f"`{channel}` channel not supported by DEBUGGER. Default channel `io` selected."
             )
-        elif not Language.__dict__.get(Enums.members).get(language):
+        if not Language.__dict__.get(Enums.members).get(language):
             language = Language.python.name
-            logger.warning(
-                f"{language} Language Not Supported by Debugger. Default python selected."
+            logger.debug(
+                f"`{language}` language not supported by DEBUGGER. Default language `python` selected."
             )
         if run_as_main:
-            if not config.disable:
-                if name != "__main__":
-                    logger.error(
-                        f"Debugger can only be used in __main__ module. Debugger has been deactivated in {name}"
-                    )
-                    cls.disable = True
-                else:
-                    cls.disable = False
+            if name != "__main__":
+                logger.error(
+                    f"DEBUGGER can only be used in `__main__` module. DEBUGGER has been `DISABLED` in `{name}` module."
+                )
+                cls.disable = True
+            elif (
+                name == "__main__"
+                and not config.disable
+                and (config.disable == cls.disable or (hasattr(cls, "instance")))
+            ):
+                cls.disable = False
+
         if not cls.disable:
-            logger.debug("DEBUGGER='enabled'")
-            logger.debug(
-                f"Debugger is active in {name} module. Debugger is using {channel} channel and {linter} linter."
+            logger.debug("DEBUGGER=`ENABLED`")
+            logger.info(
+                f"DEBUGGER is active in `{name}` module with channel `{channel}` and linter `{linter}`."
             )
             cls.script_utils: BaseScript = (
                 Script.__dict__.get(Enums.members).get(language).value()
@@ -136,6 +152,14 @@ class Debugger(Object):
                 cls.__caller_module = cls.runtime_info.get_module(
                     cls.runtime_info.get_stack()[-1][0]
                 )
+                if not cls.__caller_module:
+                    logger.error(
+                        "Caller module is required for python language. DEBUGGER has been `DISABLED`."
+                    )
+                    cls.disable = True
+                    raise CallerNotFoundError(
+                        "Caller module is required for python language."
+                    )
                 cls.__caller_filename: str = (
                     cls.runtime_info.get_stack_caller_frame().filename
                 )
@@ -148,9 +172,11 @@ class Debugger(Object):
             elif not caller:
                 logger.error("Caller script is required for non-python languages.")
                 cls.disable = True
-                raise ValueError("Caller script is required for non-python languages.")
+                raise CallerNotFoundError(
+                    "Caller script is required for non-python languages."
+                )
             else:
-                cls.__caller: Path = caller
+                cls.__caller: str = caller
             if language == Language.python:
                 cls.__caller_source: script = cls.script_utils.get_script(cls.__caller)
                 cls.__script: script = cls.script_utils.get_attributes(
@@ -173,7 +199,7 @@ class Debugger(Object):
                 sys.excepthook = threading.excepthook = cls.handle_exception
                 atexit.register(cls.exit_handler)
         else:
-            logger.debug("DEBUGGER='disabled'")
+            logger.debug("DEBUGGER=`DISABLED`")
         if not hasattr(cls, "instance"):
             cls.instance = super(Debugger, cls).__new__(
                 cls,
@@ -205,9 +231,10 @@ class Debugger(Object):
         self.assigned_var = None
         if self.language == Language.python and self.run_as_main:
             startline = self.runtime_info.get_stack_caller_frame().lineno
-            line = self.__caller_source.lines[startline - 1].split("=")
-            if len(line) > 1:
-                self.assigned_var = f"{line[0].strip()}"
+            if not self.disable:
+                line = self.__caller_source.lines[startline - 1].split("=")
+                if len(line) > 1:
+                    self.assigned_var = f"{line[0].strip()}"
 
     def __check_status(function: types.FunctionType) -> Any:
         """
@@ -282,9 +309,9 @@ class Debugger(Object):
                         ] = mode.lower()
                         context[Context.prompt.value][
                             Context.mode.value
-                        ] = self.redirect_on_error
-                    context[Context.execution.value][Context.output.value] = str(
-                        exc_output
+                        ] = self.redirect_on_error.get(mode)
+                    context[Context.execution.value][Context.output.value] = (
+                        str(exc_output) if exc_output else None
                     )
                     context[Context.execution.value][
                         Context.status.value
@@ -360,7 +387,7 @@ class Debugger(Object):
                         ] = mode.lower()
                         context[Context.prompt.value][
                             Context.mode.value
-                        ] = self.redirect_on_error
+                        ] = self.redirect_on_error.get(mode)
                     self.dispatch(mode, context, set_flag=True)
 
         for mode in self.atexit_modes + self.on_error_modes:
@@ -443,21 +470,14 @@ class Debugger(Object):
             )
         elif lenght >= 3:
             exc_type, exc_value, exc_traceback = args
-        if exc_type in cls.skip_errors:
-            logger.debug(
-                f"SKIP ERROR `not dispatched` to the cli-engine for traceback={exc_traceback}::error_type={exc_type}::error_message={exc_value}'"
-            )
-            logger.error(f"{exc_type.__name__}: {exc_value}")
-            if cls.attach_hook:
-                atexit.unregister(cls.exit_handler)
-            return
         cls.dispatch_on_error(exc_type, exc_value, exc_traceback, thread, process)
 
+    @__check_status
     def __set_mode(self, mode: str, method: str = None) -> str:
         if mode:
             mode = mode.lower()
         if mode not in Mode.__dict__.get(Enums.members):
-            logger.error(
+            logger.warning(
                 f"method `{method.upper()}` :: mode '{mode.upper()}' is not supported."
             )
             mode = None
@@ -667,7 +687,7 @@ class Debugger(Object):
             else:
                 cls.channel.send(context)
             logger.debug(
-                f"DISPATCHED `successfully` to the cli-engine for mode='{context.get('prompt')['mode'].upper()}'::startline={context.get('source')['startline']}::endline={context.get('source')['endline']}::referer='{context.get(Context.prompt)[Context.referer]}'"
+                f"DISPATCHED `successfully` for mode='{context.get('prompt')['mode'].upper()}'::referer='{context.get(Context.prompt)[Context.referer]}'::startline={context.get('source')['startline']}::endline={context.get('source')['endline']}"
             )
 
     @classmethod
@@ -679,6 +699,9 @@ class Debugger(Object):
         traceback_n: str = None,
         thread: threading.Thread = None,
         process: multiprocessing.Process = None,
+        lint_suggestions: str = None,
+        lint_format: str = None,
+        line_number: int = None,
     ) -> None:
         """
         Dispatch context to the cli-engine when the program exits with an error.
@@ -689,10 +712,19 @@ class Debugger(Object):
             traceback_n (Traceback object): Traceback of the error.
             thread (threading.Thread): Thread that caused the error.
             process (multiprocessing.Process): Process that caused the error.
+            lint_suggestions (str): Lint suggestions for the code.
+            lint_format (str): Lint format for the linter output.
         """
-        line_number = cls.__caller_source.lenght
         if cls.attach_hook:
             atexit.unregister(cls.exit_handler)
+        # if exc_type in cls.skip_errors:
+        if any(error in str(exc_type) for error in cls.skip_errors):
+            logger.debug(
+                f"SKIP ERROR `not dispatched` for traceback={traceback_n}::error_type={exc_type}::error_message={exc_value}'"
+            )
+            logger.error(f"{exc_type.__name__}: {exc_value}")
+            return
+        line_number = line_number or cls.__caller_source.lenght
         if (
             isinstance(traceback_n, types.TracebackType)
             and cls.language == Language.python
@@ -712,6 +744,7 @@ class Debugger(Object):
 
         def dispatch(mode: str):
             global fixed
+            p_mode = mode
             watch_logs: List[Dict[str, str]] = cls.watch_logs.get(mode, [])
             referer = None
             for log in watch_logs:
@@ -726,8 +759,12 @@ class Debugger(Object):
                 ):
                     context: Dict = log.get(Context.context)
                     context[Context.execution.value][Context.traceback.value] = {
-                        Context.exception_type.value: str(exc_type),
-                        Context.exception_message.value: str(exc_value),
+                        Context.exception_type.value: str(exc_type)
+                        if exc_type
+                        else None,
+                        Context.exception_message.value: str(exc_value)
+                        if exc_value
+                        else None,
                         Context.full_traceback.value: traceback_n,
                         Context.error_line.value: None,
                     }
@@ -737,15 +774,23 @@ class Debugger(Object):
                     if mode in cls.atexit_modes:
                         context[Context.prompt.value][
                             Context.mode.value
-                        ] = cls.redirect_atexit
+                        ] = cls.redirect_atexit.get(mode)
+                        p_mode = cls.redirect_atexit.get(mode)
                         context[Context.prompt.value][
                             Context.referer.value
                         ] = mode.lower()
                         referer = mode.upper()
                     # Check the flag that indicates the mode has been dispatched
+                    if lint_suggestions:
+                        Context.prompt.value[Context.suggestions.value][
+                            Context.linter.value
+                        ][Context.suggestions.value] = lint_suggestions
+                        Context.prompt.value[Context.suggestions.value][
+                            Context.linter.value
+                        ][Context.lint_format.value] = lint_format
                     cls.channel.send(context)
                     logger.debug(
-                        f"DISPATCHED `on error` to the cli-engine for mode='{mode.upper()}'::referer='{referer}::startline={log.get('startline')}::endline={log.get('endline')}::error_line=None::error_type={exc_type}::error_message={exc_value}'"
+                        f"DISPATCHED `on error` for mode='{p_mode.upper()}'::referer='{referer}::startline={log.get('startline')}::endline={log.get('endline')}::error_line={line_number}::error_type={exc_type}::error_message={exc_value}'"
                     )
                     fixed = True
                     break
@@ -807,7 +852,6 @@ class Debugger(Object):
             endline=block.endline,
             subject=subject,
             block=block.block,
-            block_ast_dump=block.block_ast_dump,
             block_comments=block.block_comments,
         )
         sync, context = self.__sync_modes(
@@ -840,23 +884,46 @@ class Debugger(Object):
         """
 
         def omit(iter_list: List[str], pattern: str = None) -> str:
+            # Remove a particular pattern from the code block
             logger.debug(f"OMITTING: {pattern}")
             result = ""
+            cont = False  # Used to track multi line statements / continuation of a line / pattern
             if remove_pattern:
                 for line in iter_list:
                     if (
-                        pattern.strip().lower() in line.strip().lower()
-                        or pattern.strip().lower().replace(".", "(")
-                        in line.strip().lower()
-                    ):
+                        (
+                            pattern.strip().lower() in line.strip().lower()
+                            and "(" in line  # Remove function call
+                        )
+                        or (
+                            pattern.strip().lower().replace(".", "(")
+                            in line.strip().lower()
+                        )  # Remove function call
+                        or (
+                            pattern.strip().lower().replace(".", "")
+                            in line.strip().lower()
+                            and "=" in line
+                        )  # Remove assignment
+                        or (
+                            (
+                                pattern.strip().lower() in line.strip().lower()
+                                and self.language != Language.python
+                            )  # Remove patterns for other languages
+                        )
+                        or cont  # Remove multi line statements
+                    ):  # TODO: Parse with regex and remove the pattern
                         logger.debug(f"OMITTED: {line.strip()}")
-                        if (
-                            line.strip().startswith("with")
-                            and self.language == Language.python
-                        ):
-                            strips = len(line) - len(line.lstrip())
-                            new_line = f"{' '*strips}def function():\n"
-                            result += new_line
+                        if ")" in line:
+                            if (
+                                line.strip().startswith("with")
+                                and self.language == Language.python
+                            ):
+                                strips = len(line) - len(line.lstrip())
+                                new_line = f"{' '*strips}def function():\n"
+                                result += new_line
+                            cont = False
+                        else:
+                            cont = True
                         continue
                     result += line
             else:
@@ -878,21 +945,6 @@ class Debugger(Object):
                         ):
                             endline = line
                             break
-                    block_ast: ast.AST = (
-                        (
-                            self.script_utils.get_ast(self.__caller_source.string).body[
-                                body_index
-                            ]
-                            if body_index
-                            else self.script_utils.get_ast(self.__caller_source.string)
-                        )
-                        if self.language == Language.python
-                        else None
-                    )
-                    block = omit(
-                        self.__caller_source.lines[startline - 1 : endline - 1],
-                        remove_pattern,
-                    )
                 elif style == Code.syntax:
                     for line in range(startline, endline):
                         if syntax_format.lower() in self.__source_lines[line].lower():
@@ -906,42 +958,40 @@ class Debugger(Object):
                                 )
                             endline = line + 1
                             break
-                    block = omit(
-                        self.__caller_source.lines[startline - 1 : endline - 1],
-                        remove_pattern,
-                    )
-                    block_ast: ast.AST = (
-                        self.script_utils.get_ast(block)
-                        if self.language == Language.python
-                        else None
-                    )
-                block_ast_dump: str = ast.dump(block_ast) if block_ast else None
-                block_comments: str = (
-                    self.script_utils.get_comments(block_ast) if block_ast else None
-                )
-            else:
-                block = omit(
-                    self.__caller_source.lines[startline - 1 : endline - 1],
-                    remove_pattern,
-                )
-
-                block_ast = (
+            block = omit(
+                self.__caller_source.lines[startline - 1 : endline - 1],
+                remove_pattern,
+            )
+            # Get the ast of the code block
+            block_ast = (
+                (
                     self.script_utils.get_ast(block)
                     if self.language == Language.python
                     else None
                 )
-                block_ast_dump = ast.dump(block_ast) if block_ast else None
-                block_comments = (
-                    self.script_utils.get_comments(block_ast) if block_ast else None
+                if style != Code.indent
+                else (
+                    (
+                        self.script_utils.get_ast(self.__caller_source.string).body[
+                            body_index
+                        ]
+                        if body_index
+                        else self.script_utils.get_ast(self.__caller_source.string)
+                    )
+                    if self.language == Language.python
+                    else None
                 )
-            return block_object(
-                block, startline, endline, block_ast_dump, block_comments
             )
+            # Get the comments/docstring of the code block if language is python
+            block_comments = (
+                self.script_utils.get_comments(block_ast) if block_ast else None
+            )
+            return block_object(block, startline, endline, block_comments)
         except IndentationError or SyntaxError as e:
             logger.error(
                 f"Block startline={startline} to endline={endline} has the incorrect language syntax within it. Please select a valid language syntax block. {e} "
             )
-            return block_object(None, startline, endline, None, None)
+            return block_object(None, startline, endline, None)
 
     def __build_context(
         self,
@@ -949,7 +999,6 @@ class Debugger(Object):
         startline: int = None,
         endline: int = None,
         block: str = None,
-        block_ast_dump: str = None,
         block_comments: str = None,
         subject: str = None,
         output: str = None,
@@ -967,7 +1016,6 @@ class Debugger(Object):
             startline (int): Start line of the code block.
             endline (int): End line of the code block.
             block (str): Code block.
-            block_ast_dump (ast.AST): AST of the code block.
             block_comments (List[str]): Comments in the code block.
             subject (str): Subject of the code block.
             output (str): Output of the code block.
@@ -995,18 +1043,15 @@ class Debugger(Object):
                 Context.endline.value: str(endline),
                 Context.code.value: self.__caller_source.string,
                 Context.block.value: block,
-                Context.imports.value: self.__caller_source.imports,
                 Context.lined_code.value: self.__caller_source.lined_string,
-                Context.code_ast_dump.value: self.__caller_source.ast_dump,
                 Context.linenos.value: str(self.__caller_source.lenght),
-                Context.block_ast.value: block_ast_dump,
                 Context.language.value: self.language,
             },
             Context.prompt.value: {
                 Context.suggestions.value: {
                     Context.linter.value: {
                         Context.suggestions.value: self.lint_suggestions,
-                        Context.lint_format: Linter.pylint.name,
+                        Context.lint_format.value: Linter.pylint.name,
                     },
                     Context.block_comments.value: block_comments,
                     Context.subject.value: subject,
@@ -1027,15 +1072,21 @@ class Debugger(Object):
 
     @classmethod
     @__check_status
-    def exit_handler(cls, output: str = None, lint_suggestions: str = None):
+    def exit_handler(
+        cls, output: str = None, lint_suggestions: str = None, lint_format: str = None
+    ):
         """
         Exit handler to be called on exit of the program.
         Parameters:
             output (str): Output of the executed code.
+            lint_suggestions (str): Lint suggestions of the executed code.
+            lint_format (str): Lint format of the executed code.
         """
-        redirect_logs: List[Dict] = cls.watch_logs.get(cls.redirect_on_error, [])
 
         def dispatch(mode: str):
+            redirect_logs: List[Dict] = cls.watch_logs.get(
+                cls.redirect_on_error.get(mode), []
+            )
             mode_logs: List[Dict] = cls.watch_logs.get(mode, [])
             for log in mode_logs:
                 if not log[Context.flag]:
@@ -1058,13 +1109,21 @@ class Debugger(Object):
                         ] = mode.lower()
                         context[Context.prompt.value][
                             Context.mode.value
-                        ] = cls.redirect_on_error
+                        ] = cls.redirect_on_error.get(mode)
                     # Dispatch all at exit mode and on_error code blocks at exit
                     context[Context.execution.value][
                         Context.status.value
                     ] = Code.success.value
                     if output:
                         context[Context.execution.value][Context.output.value] = output
+                    if lint_suggestions:
+                        Context.prompt.value[Context.suggestions.value][
+                            Context.linter.value
+                        ][Context.suggestions.value] = lint_suggestions
+                        Context.prompt.value[Context.suggestions.value][
+                            Context.linter.value
+                        ][Context.lint_format.value] = lint_format
+
                     cls.dispatch(
                         mode,
                         context,

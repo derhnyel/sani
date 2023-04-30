@@ -42,7 +42,6 @@ block_object = NamedTuple(
         ("block", str),
         ("startline", int),
         ("endline", int),
-        ("block_ast_dump", str),
         ("block_comments", str),
     ],
 )
@@ -144,11 +143,8 @@ class Context(str, Enum):
     endline = "endline"
     code = "code"
     block = "block"
-    imports = "imports"
     lined_code = "lined_code"
-    code_ast_dump = "code_ast_dump"
     linenos = "linenos"
-    block_ast = "block_ast"
     prompt = "prompt"
     suggestions = "suggestions"
     linter = "linter"

@@ -78,10 +78,8 @@ def handler(
                         startline=comment.lineno,
                         remove_pattern=f"{config.prefix}",  # {config.delimiter}",
                     )
-
     output, error = script.run()
     if error:
-        debugger.dispatch_on_error(traceback_n=error)
+        debugger.dispatch_on_error(traceback_n=error, exc_type=error, exc_value=error)
     else:
         debugger.exit_handler(output)
-
