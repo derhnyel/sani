@@ -574,8 +574,13 @@ class Debugger(Object):
             ):
                 # Swap last line of the previous mode with the current mode
                 # Extend the code block instead of creating a new mode instance
-                context = modify_log(last_startline, endline)
+                context = (
+                    modify_log(last_endline, endline)
+                    if mode in self.instant_modes
+                    else modify_log(last_startline, endline)
+                )
                 return True, context
+
             elif startline >= last_endline and (
                 endline > last_endline and endline >= startline
             ):
@@ -595,7 +600,11 @@ class Debugger(Object):
             ):
                 # Get the startline and the last endline
                 # Modify the watch log and context logs to reflect that
-                context = modify_log(startline, last_endline)
+                context = (
+                    modify_log(startline, last_startline)
+                    if mode in self.instant_modes
+                    else modify_log(startline, last_endline)
+                )
                 return True, context
             else:
                 return False, context
@@ -700,7 +709,7 @@ class Debugger(Object):
         thread: threading.Thread = None,
         process: multiprocessing.Process = None,
         lint_suggestions: str = None,
-        lint_format: str = None,
+        linter: str = None,
         line_number: int = None,
     ) -> None:
         """
@@ -713,7 +722,7 @@ class Debugger(Object):
             thread (threading.Thread): Thread that caused the error.
             process (multiprocessing.Process): Process that caused the error.
             lint_suggestions (str): Lint suggestions for the code.
-            lint_format (str): Lint format for the linter output.
+            linter (str): Lint format for the linter output.
         """
         if cls.attach_hook:
             atexit.unregister(cls.exit_handler)
@@ -783,11 +792,11 @@ class Debugger(Object):
                     # Check the flag that indicates the mode has been dispatched
                     if lint_suggestions:
                         Context.prompt.value[Context.suggestions.value][
-                            Context.linter.value
-                        ][Context.suggestions.value] = lint_suggestions
+                            Context.lint_suggestions.value
+                        ] = lint_suggestions
                         Context.prompt.value[Context.suggestions.value][
                             Context.linter.value
-                        ][Context.lint_format.value] = lint_format
+                        ] = linter
                     cls.channel.send(context)
                     logger.debug(
                         f"DISPATCHED `on error` for mode='{p_mode.upper()}'::referer='{referer}::startline={log.get('startline')}::endline={log.get('endline')}::error_line={line_number}::error_type={exc_type}::error_message={exc_value}'"
@@ -1046,16 +1055,14 @@ class Debugger(Object):
                 Context.lined_code.value: self.__caller_source.lined_string,
                 Context.linenos.value: str(self.__caller_source.lenght),
                 Context.language.value: self.language,
+                Context.block_comments.value: block_comments,
+                Context.source_path.value: self.__caller,
             },
             Context.prompt.value: {
                 Context.suggestions.value: {
-                    Context.linter.value: {
-                        Context.suggestions.value: self.lint_suggestions,
-                        Context.lint_format.value: Linter.pylint.name,
-                    },
-                    Context.block_comments.value: block_comments,
+                    Context.lint_suggestions.value: self.lint_suggestions,
+                    Context.linter.value: self.linter.linter_name,
                     Context.subject.value: subject,
-                    Context.comments.value: self.caller_comments,
                 },
                 Context.mode.value: mode,
                 Context.referer.value: referer,
@@ -1073,14 +1080,14 @@ class Debugger(Object):
     @classmethod
     @__check_status
     def exit_handler(
-        cls, output: str = None, lint_suggestions: str = None, lint_format: str = None
+        cls, output: str = None, lint_suggestions: str = None, linter: str = None
     ):
         """
         Exit handler to be called on exit of the program.
         Parameters:
             output (str): Output of the executed code.
             lint_suggestions (str): Lint suggestions of the executed code.
-            lint_format (str): Lint format of the executed code.
+            linter (str): Lint format of the executed code.
         """
 
         def dispatch(mode: str):
@@ -1118,11 +1125,11 @@ class Debugger(Object):
                         context[Context.execution.value][Context.output.value] = output
                     if lint_suggestions:
                         Context.prompt.value[Context.suggestions.value][
-                            Context.linter.value
-                        ][Context.suggestions.value] = lint_suggestions
+                            Context.lint_suggestions.value
+                        ] = lint_suggestions
                         Context.prompt.value[Context.suggestions.value][
                             Context.linter.value
-                        ][Context.lint_format.value] = lint_format
+                        ] = linter
 
                     cls.dispatch(
                         mode,

@@ -148,7 +148,7 @@ class Context(str, Enum):
     prompt = "prompt"
     suggestions = "suggestions"
     linter = "linter"
-    value = "value"
+    lint_suggestions = "lint_suggestions"
     lint_format = "format"
     block_comments = "block_comments"
     subject = "subject"
@@ -159,6 +159,8 @@ class Context(str, Enum):
     language = "language"
     context = "context"
     pid = "pid"
+    source_path = "source_path"
+    imports = "imports"
 
 
 class Enums(str, Enum):
