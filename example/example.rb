@@ -1,4 +1,4 @@
-# sani document
+# sani:mode=document
 class Example
     def hello 
         puts "hello world!"
