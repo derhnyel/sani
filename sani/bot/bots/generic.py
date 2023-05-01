@@ -96,7 +96,5 @@ class GenericSaniBot(BaseBot):
             'full source code': input_context[ct.source.value][ct.code.value],
             'full source code with line numbers': input_context[ct.source.value][ct.lined_code.value],
             'code block': input_context[ct.source.value][ct.block.value],
-            'full code comments': input_context[ct.prompt.value][ct.suggestions.value][ct.comments.value],
-            'code block comments':  input_context[ct.prompt.value][ct.suggestions.value][ct.block_comments.value]
         }
         return prompt_data

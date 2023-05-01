@@ -20,7 +20,6 @@ class FixBot(GenericSaniBot):
             'exception_message': input_context[ct.execution.value][ct.traceback.value][ct.exception_message.value],
             'full_traceback': input_context[ct.execution.value][ct.traceback.value][ct.full_traceback.value],
             'error line':  input_context[ct.execution.value][ct.traceback.value][ct.error_line.value],
-            'status': input_context[ct.execution.value][ct.status.value],
         }
         prompt_data = {**base_fields, **additional_fields}
         return prompt_data
@@ -43,7 +42,8 @@ class ImproveBot(GenericSaniBot):
             'full_traceback': input_context[ct.execution.value][ct.traceback.value][ct.full_traceback.value],
             'output': input_context[ct.execution.value][ct.output.value],
             'error line':  input_context[ct.execution.value][ct.traceback.value][ct.error_line.value],
-            'lint suggestions': input_context[ct.prompt.value][ct.suggestions.value][ct.linter.value],
+            'linter':input_context[ct.prompt.value][ct.suggestions.value][ct.linter.value],
+            'linter suggestions': input_context[ct.prompt.value][ct.suggestions.value][ct.lint_suggestions.value],
         }
         prompt_data = {**base_fields, **additional_fields}
         return prompt_data
@@ -59,11 +59,7 @@ class TestBot(GenericSaniBot):
         super().__init__(context, mode='test', model_name=model_name, *args, **kwargs)
 
     def _unpack_obj(self, input_context: Dict):
-        base_fields = super()._unpack_obj(input_context)
-        additional_fields = {
-            'status': input_context[ct.execution.value][ct.status.value],
-        }
-        prompt_data = {**base_fields, **additional_fields}
+        prompt_data = super()._unpack_obj(input_context)
         return prompt_data
 
 
