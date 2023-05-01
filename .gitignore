@@ -5,7 +5,7 @@
 *.pyo
 *.pyd
 *.txt
-test.py
+*test*
 prompt.py
 *ai_*
 *wolve*
