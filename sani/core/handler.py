@@ -29,27 +29,29 @@ def handler(
         caller=caller,
         attach_hook=False,
         run_as_main=False,
-        stdout="test.txt",
+        stdout="./example/example.txt",
     )
     trigger: dict = {}
 
     def set_trigger(attr: str):
         sep_attr = attr.split(config.seperator)
         if len(sep_attr) == 2:
-            if sep_attr[0] == Context.mode:
+            key = sep_attr[0].strip()
+            value = sep_attr[1].strip()
+            if key == Context.mode:
                 trigger[Context.mode.value] = Mode.__dict__.get(Enums.members).get(
-                    sep_attr[1]
+                    value
                 )
-            elif sep_attr[0] == Context.subject:
-                trigger[Context.subject.value] = sep_attr[1]
-            elif sep_attr[0] == Context.startline:
-                trigger[Context.startline.value] = sep_attr[1]
-            elif sep_attr[0] == Context.endline:
-                trigger[Context.endline.value] = sep_attr[1]
+            elif key == Context.subject:
+                trigger[Context.subject.value] = value
+            elif key == Context.startline:
+                trigger[Context.startline.value] = value
+            elif key == Context.endline:
+                trigger[Context.endline.value] = value
             else:
-                print("Unknown suffix", sep_attr[0])
+                print("Unknown suffix", key)
         else:
-            print("Unknown suffix", sep_attr[0])
+            print("Unknown suffix", key)
 
     for comment in debugger.caller_comments:
         if comment.text.strip().lower().startswith(config.prefix.strip().lower()):
@@ -76,9 +78,8 @@ def handler(
                         startline=comment.lineno,
                         remove_pattern=f"{config.prefix}",  # {config.delimiter}",
                     )
-
     output, error = script.run()
     if error:
-        debugger.dispatch_on_error(traceback_n=error)
+        debugger.dispatch_on_error(traceback_n=error, exc_type=error, exc_value=error)
     else:
         debugger.exit_handler(output)

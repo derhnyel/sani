@@ -7,7 +7,9 @@ from sani.utils.custom_types import (
     io_object,
     Dict,
 )
+import time
 from json import dumps, loads
+import tempfile
 
 
 class BaseCommChannel(ABC):
@@ -97,8 +99,6 @@ class IoCommChannel(BaseCommChannel):
         self.redirect(stdout=False)
 
     def connect(self):
-        import tempfile
-
         stdin = self.kwargs.get("stdin") or tempfile.NamedTemporaryFile()
         stdout = self.kwargs.get("stdout") or tempfile.NamedTemporaryFile()
         stderr = self.kwargs.get("stderr") or tempfile.NamedTemporaryFile()
@@ -121,33 +121,30 @@ class IoCommChannel(BaseCommChannel):
         self.stderr[1].stream.close()
         self.redirect(stdin=False, stdout=False, stderr=False)
 
-    def consume(self):
-        """
-        Consume the message from the io comm channel
-        """
-        # TODO: house watchdog process here
-
-        # Acknowlege the message
-        # Process the message
-        # Callback(message)
-
-    def callback(self):
-        """
-        Callback for the io comm channel .
-        """
-        pass
-        # Get bot response
-        # Send bot response to thread queue
-
-    def receive(self, *args, **kwargs):
+    def receive(self, callback: callable = None):
         """
         Receive a message from the io comm channel
         """
         self.redirect(stdin=True)
-        if self.sys.stdin.readable():
-            message = self.sys.stdin.read()
-        self.redirect(stdin=False)
-        return message
+        callback: callable = callback or self.callback
+
+        def stdin_monitor():
+            while self.sys.stdin.readable():
+                try:
+                    message = input()
+                    if message:
+                        message = loads(message)
+                        callback(message)
+                        yield message
+                except EOFError:
+                    time.sleep(1)
+
+        return stdin_monitor()
+
+    def callback(self, message: str):
+        """
+        Callback for the io comm channel .
+        """
 
     def redirect(self, stdin: bool = False, stdout: bool = False, stderr: bool = False):
         """

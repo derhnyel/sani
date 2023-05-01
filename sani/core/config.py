@@ -3,6 +3,7 @@ from sani.core.ops import RuntimeInfo, Os, TerminalCommand, os
 from sani.utils.custom_types import Dict, Language, List, Mode
 from dotenv import load_dotenv
 import configparser
+from sani.debugger.linter import Linter
 
 load_dotenv()
 
@@ -11,12 +12,18 @@ load_dotenv()
 class Config:
     """Configuration for the application."""
 
-    disable: bool = os.getenv("DEBUGGER_DEACTIVATE", False)
+    disable: bool = os.getenv("SANI_DISABLE", False)
     deactivate = disable
-    linter: str = os.getenv("DEBUGGER_LINTER", "pylint")  # pylint|flake8|disable
-    linter_max_line_length: int = int(os.getenv("DEBUGGER_LINTER_MAX_LINE_LENGTH", 120))
-    channel: str = os.getenv("DEBUGGER_CHANNEL", "io")  # io|rmq|redis
-    log_level = os.getenv("DEBUGGY_LOG_LEVEL", "DEBUG")
+    linter: str = os.getenv("SANI_LINTER", "pylint").lower()
+    # linter_max_line_length: int = int(os.getenv("SANI_LINT_MAX_LENGHT", 120))
+    channel: str = os.getenv("SANI_CHANNEL", "io").lower()
+    log_level = os.getenv("SANI_LOGLEVEL", "DEBUG").upper()
+    prefix: str = "sani"
+    delimiter: str = ":"
+    seperator: str = "="
+    end_syntax: str = "sani:end"
+    raise2logs: bool = os.getenv("SANI_RAISE2LOGS", True)
+    runtime_recusive_limit: int = 5
     default_ostty_command: Dict[Os, TerminalCommand] = field(
         default_factory=lambda: {
             Os.linux: TerminalCommand.xterm,
@@ -35,11 +42,9 @@ class Config:
             "<reinteract-input-": "reinteract",
         }
     )
-    raise2logs: bool = os.getenv("DEBUGGY_RAISE2LOGS", True)
     deactivate_exception_hooks: bool = os.getenv(
         "DEBUGGER_DEACTIVATE_EXCEPTION_HOOKS", False
     )
-
     SOURCE_LANGUAGE_MAP: Dict[str, Language] = field(
         default_factory=lambda: {
             ".py": Language.python,
@@ -106,9 +111,25 @@ class Config:
             Mode.analyze,
         ]
     )
-    atexit_modes: List[Mode] = field(default_factory=lambda: [Mode.fix, Mode.test])
-    prefix: str = "sani"
-    delimiter: str = ":"
-    seperator: str = "="
-    end_syntax: str = "sani:end"
-    runtime_recusive_limit: int = 5
+    atexit_modes: List[Mode] = field(default_factory=lambda: [Mode.test])
+    on_error_modes: List[Mode] = field(default_factory=lambda: [Mode.fix])
+    redirect_on_error_mode: Dict[Mode, Mode] = field(
+        default_factory=lambda: {
+            Mode.fix: Mode.improve.value,
+        }
+    )
+    redirect_atexit_mode: Dict[Mode, Mode] = field(
+        default_factory=lambda: {
+            Mode.test: Mode.fix.value,
+        }
+    )
+    linter_language_map: Dict[Language, str] = field(
+        default_factory=lambda: {
+            Language.python: [Linter.pylint.name, Linter.flake8.name],
+            Language.javascript: [Linter.pyjslint.name],
+            Language.html: [Linter.htmllint.name],
+        }
+    )
+    skip_errors: List[str] = field(
+        default_factory=lambda: ["KeyboardInterrupt", "SystemExit", "GeneratorExit"]
+    )

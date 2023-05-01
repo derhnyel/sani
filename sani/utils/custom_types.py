@@ -42,7 +42,6 @@ block_object = NamedTuple(
         ("block", str),
         ("startline", int),
         ("endline", int),
-        ("block_ast_dump", str),
         ("block_comments", str),
     ],
 )
@@ -142,17 +141,14 @@ class Context(str, Enum):
     source = "source"
     startline = "startline"
     endline = "endline"
-    code = "full source code"
-    block = "code block"
-    imports = "imports"
+    code = "code"
+    block = "block"
     lined_code = "lined_code"
-    code_ast_dump = "code_ast_dump"
     linenos = "linenos"
-    block_ast = "block_ast"
     prompt = "prompt"
     suggestions = "suggestions"
     linter = "linter"
-    value = "value"
+    lint_suggestions = "lint_suggestions"
     lint_format = "format"
     block_comments = "code block comments"
     subject = "intended action"
@@ -163,6 +159,8 @@ class Context(str, Enum):
     language = "language"
     context = "context"
     pid = "pid"
+    source_path = "source_path"
+    imports = "imports"
 
 
 class Enums(str, Enum):
@@ -198,6 +196,7 @@ class Executables(str, Enum):
     gcc = "gcc"
     javac = "java"
     java = "javac"
+    typescript = "tsc"
 
     def get(language: str, command: List[str]) -> List[str]:
         executable: Executables = Executables.__dict__.get(Enums.members).get(language)

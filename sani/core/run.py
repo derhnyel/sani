@@ -1,8 +1,7 @@
 from subprocess import PIPE, Popen
 from threading import Thread
 from queue import Queue
-import sys
-import os
+from sani.core.ops import os,sys
 from sani.utils.custom_types import Os, Language, List, Executables, Tuple, types
 from pathlib import Path
 from sani.core.config import Config
