@@ -48,7 +48,7 @@ from io import BytesIO, TextIOWrapper
 
 MODIFIED_SOURCE_LIST: List[str] = None
 PARSED_SOURCE: tuple[str, List[str], List[str], script_type] = None
-import sys
+# import sys
 import difflib
 import json
 
@@ -195,6 +195,7 @@ def sync_script_with_json(
     parser: BaseScript,
 ) -> tuple[str, List[str], List[str], script_type]:
     global MODIFIED_SOURCE_LIST
+    print(bot_response)
 
     json_response: Dict = json_validated_response(bot, bot_response)
     (

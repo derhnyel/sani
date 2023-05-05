@@ -4,7 +4,6 @@
 *.pyc
 *.pyo
 *.pyd
-*.txt
 *test*
 prompt.py
 *ai_*

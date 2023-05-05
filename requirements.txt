@@ -1,0 +1,13 @@
+psutil==5.8.0
+python-dotenv==1.0.0
+distro==1.6.0
+pylint==2.13.4
+flake8==6.0.0
+html-linter==0.4.0
+astor==0.8.1
+langchain
+openai
+jinja2
+pyjslint==0.3.4
+termcolor
+# libmagic https://github.com/ahupp/python-magic

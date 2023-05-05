@@ -138,18 +138,18 @@ and should have the following fields:
 3. statement: the code statement to be used in the operation. This must be a valid code statement in the programming \
 language. This field is not needed for delete operations.
 Here's an example response:
-{
+{\
   explanation: 'The error occurred because you cannot add an integer to a string. To fix this, cast the integer\
-    to a string before adding'
-  operations: [
-    {'type': 'insertAfter', 'line': 7, 'statement': # concat two strings },
-    {'type': 'replace', 'line': 12, 'statement': 'print(str(a) + b)'},
-    {'type': 'delete', 'line': 13}
-  ]
+    to a string before adding'\
+  operations: [\
+    {'type': 'insertAfter', 'line': 7, 'statement': # concat two strings },\
+    {'type': 'replace', 'line': 12, 'statement': 'print(str(a) + b)'},\
+    {'type': 'delete', 'line': 13}\
+  ]\
 }
 Properly Indent the statements to match the full source code blocks.
-Please remember to remove all new line characters and whitespaces from json response
 """
+# Please remember to remove all new line characters and whitespaces from json response
 # Please remember to include the CORRECT INDENTATION and the lines from the full source code that need to be removed,replaced when making changes.
 # if there are no lint suggestions, improve the code readability and maintainablity also perform proper indentation, linting and place comments where neccesary.
 # Try to infer what the code block does and write a doc string for the block
