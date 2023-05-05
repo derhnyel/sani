@@ -1,11 +1,12 @@
-from subprocess import PIPE, Popen
+from subprocess import PIPE, Popen, check_output, STDOUT, CalledProcessError
 from threading import Thread
 from queue import Queue
-from sani.core.ops import os,sys
+from sani.core.ops import os, sys
 from sani.utils.custom_types import Os, Language, List, Executables, Tuple, types
 from pathlib import Path
 from sani.core.config import Config
 from sani.utils.exception import UnsupportedError
+
 
 config = Config()
 
@@ -26,6 +27,7 @@ class ScriptRun:
             if executable
             else Executables.get(self.language, command)
         )
+        # self.env = os.environ.copy()
 
     def __get_language(self) -> Language:
         self.extension = self.file_path.suffix
@@ -37,6 +39,24 @@ class ScriptRun:
 
     def run(self) -> Tuple[str, str]:
         return self.__listen(self.command)
+
+    def check(
+        self, command: List[str] = None, disable_debugger: bool = True
+    ) -> Tuple[str, int, bool]:
+        # self.env["SANI_DISABLE"] = disable_debugger
+        success = True
+        return_code = 0
+        try:
+            result = check_output(
+                command or self.command,
+                stderr=STDOUT,
+                env=dict(os.environ, **{"SANI_DISABLE": "1"}),
+            )
+        except CalledProcessError as e:
+            result = e.output
+            success = False
+            return_code = e.returncode
+        return result.decode("utf-8"), return_code, success
 
     def __listen(self, command) -> Tuple[str, str]:
         output: list = []

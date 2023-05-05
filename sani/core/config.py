@@ -12,17 +12,23 @@ load_dotenv()
 class Config:
     """Configuration for the application."""
 
-    disable: bool = os.getenv("SANI_DISABLE", False)
-    deactivate = disable
+    disable: bool = bool(int(os.getenv("SANI_DISABLE", "0")))
     linter: str = os.getenv("SANI_LINTER", "pylint").lower()
     # linter_max_line_length: int = int(os.getenv("SANI_LINT_MAX_LENGHT", 120))
     channel: str = os.getenv("SANI_CHANNEL", "io").lower()
     log_level = os.getenv("SANI_LOGLEVEL", "DEBUG").upper()
+    raise2logs: bool = os.getenv("SANI_RAISE2LOGS", True)
+    openai_model_name: str = os.getenv("OPENAI_MODEL_NAME", "gpt-4")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", None)
+    openai_model_temperature: float = float(os.getenv("OPENAI_MODEL_TEMPERATURE", 0))
     prefix: str = "sani"
     delimiter: str = ":"
     seperator: str = "="
     end_syntax: str = "sani:end"
-    raise2logs: bool = os.getenv("SANI_RAISE2LOGS", True)
+    app_name: str = "Sani"
+    app_version: str = "0.0.1"
+    app_description: str = "A simple debugger for python"
+    app_author: str = "Derhnyel"
     runtime_recusive_limit: int = 5
     default_ostty_command: Dict[Os, TerminalCommand] = field(
         default_factory=lambda: {

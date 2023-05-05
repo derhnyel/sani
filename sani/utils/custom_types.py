@@ -43,6 +43,7 @@ block_object = NamedTuple(
         ("startline", int),
         ("endline", int),
         ("block_comments", str),
+        ("lined_block", str),
     ],
 )
 
@@ -161,6 +162,21 @@ class Context(str, Enum):
     pid = "pid"
     source_path = "source_path"
     imports = "imports"
+    args = "args"
+    command = "command"
+    lined_block = "lined_block"
+    source_list = "source_list"
+
+
+class ChatResponse(str, Enum):
+    operation = "operations"
+    explanation = "explanation"
+    delete = "delete"
+    insert = "insertAfter"
+    line = "line"
+    replace_ = "replace"
+    statement = "statement"
+    type_ = "type"
 
 
 class Enums(str, Enum):

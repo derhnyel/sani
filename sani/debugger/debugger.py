@@ -59,6 +59,8 @@ class Debugger(Object):
         attach_hook: bool = True,
         language: str = Language.python.name,
         run_as_main: bool = True,
+        script_args: List[str] = [],
+        command: List[str] = [],
         *args,
         **kwargs,
     ):
@@ -72,6 +74,7 @@ class Debugger(Object):
             attach_hook: bool -> Attach hook to the script
             language: str     -> Language of the script
             run_as_main: bool -> Run as main script
+            script_args: List[str] -> Arguments to pass to the script
             args             -> Positional arguments
             kwargs           -> Keyword arguments
         Returns
@@ -89,6 +92,8 @@ class Debugger(Object):
         cls.run_as_main: bool = run_as_main
         cls.attach_hook: bool = attach_hook
         cls.language = language
+        cls.__caller_args = script_args
+        cls.__command = command
         linter = linter or config.linter
         channel = channel or config.channel
         if not Linter.__dict__.get(Enums.members).get(linter):
@@ -210,6 +215,8 @@ class Debugger(Object):
                 language,
                 name,
                 run_as_main,
+                script_args,
+                command,
                 *args,
                 **kwargs,
             )
@@ -278,6 +285,7 @@ class Debugger(Object):
                     or inspect.isawaitable(function)
                     or inspect.iscoroutine(function)
                 )
+                # Check if debugger is disabled or an invalid mode.. still run the function/ Do not interrupt execution
                 if self.disable or mode not in Mode.__dict__.get(Enums.members):
                     exc_output = (
                         asyncio.run(function(*args, **kwargs))
@@ -301,7 +309,9 @@ class Debugger(Object):
                     if check
                     else function(*args, **kwargs)
                 )
-                if (mode in self.atexit_modes or mode in self.on_error_modes) and sync:
+                if (
+                    mode in self.atexit_modes
+                ) and sync:  # or mode in self.on_error_modes
                     # after sending ... set the flag to True for non-atexit dispatches
                     if mode in self.on_error_modes:
                         context[Context.prompt.value][
@@ -390,7 +400,7 @@ class Debugger(Object):
                         ] = self.redirect_on_error.get(mode)
                     self.dispatch(mode, context, set_flag=True)
 
-        for mode in self.atexit_modes + self.on_error_modes:
+        for mode in self.atexit_modes:  # + self.on_error_modes:
             dispatch(mode)
 
     @__check_status
@@ -537,6 +547,29 @@ class Debugger(Object):
         Returns:
             bool: True if the mode was synchronized, False otherwise.
         """
+
+        for mode_ in Mode.__dict__.get(Enums.members):
+            if mode == mode_ and mode not in self.instant_modes:
+                continue
+            check_logs = self.watch_logs.get(mode_, [])
+            for log in check_logs:
+                last_startline = log.get(Context.startline.value)
+                last_endline = log.get(Context.endline.value)
+                if (
+                    startline >= last_endline
+                    and (endline > last_endline and endline >= startline)
+                    or (
+                        last_startline >= startline
+                        and last_startline > endline
+                        and last_startline < last_endline
+                    )
+                ):
+                    # Only add mode if the code blocks are not overlapping
+                    continue
+                logger.debug(
+                    f"`OVERLAP`. `{mode_.upper()}` has already been defined from startline {last_startline} and endline {last_endline}"
+                )
+                return False, context
         logs = self.watch_logs.get(mode, [])
         last_item = logs[-1] if logs else None
         index = None
@@ -574,11 +607,12 @@ class Debugger(Object):
             ):
                 # Swap last line of the previous mode with the current mode
                 # Extend the code block instead of creating a new mode instance
-                context = (
-                    modify_log(last_endline, endline)
-                    if mode in self.instant_modes
-                    else modify_log(last_startline, endline)
-                )
+                context = modify_log(last_startline, endline)
+                # context = (
+                #     modify_log(last_endline, endline)
+                #     if mode in self.instant_modes
+                #     else modify_log(last_startline, endline)
+                # )
                 return True, context
 
             elif startline >= last_endline and (
@@ -600,11 +634,12 @@ class Debugger(Object):
             ):
                 # Get the startline and the last endline
                 # Modify the watch log and context logs to reflect that
-                context = (
-                    modify_log(startline, last_startline)
-                    if mode in self.instant_modes
-                    else modify_log(startline, last_endline)
-                )
+                # context = (
+                #     modify_log(startline, last_startline)
+                #     if mode in self.instant_modes
+                #     else modify_log(startline, last_endline)
+                # )
+                context = modify_log(startline, last_endline)
                 return True, context
             else:
                 return False, context
@@ -807,9 +842,10 @@ class Debugger(Object):
         for mode in cls.on_error_modes:
             dispatch(mode)
         # convert all at_exit to fixes.. but ensure there are in sync with fix mode.
-        if not fixed:
-            for mode in cls.atexit_modes:
-                dispatch(mode)
+        # if not fixed:
+        #     for mode in cls.atexit_modes:
+        #         dispatch(mode)
+        logger.debug("Code Failed. No at exit mode was dispatched")
 
     @__check_status
     def build(
@@ -862,10 +898,15 @@ class Debugger(Object):
             subject=subject,
             block=block.block,
             block_comments=block.block_comments,
+            lined_block=block.lined_block,
         )
         sync, context = self.__sync_modes(
             mode, context, block.startline, block.endline
         )  # synchronize all code blocks in a particular mode
+        if not sync:
+            logger.info(
+                f"`OVERLAP`. `{mode.upper()}` cannot be defined within startline {block.startline} and endline {block.endline} because a mode has already been defined that captures that block of code."
+            )
         return context, sync, block
 
     def __build_block(
@@ -892,11 +933,14 @@ class Debugger(Object):
             block (NamedTuple): Code block.
         """
 
-        def omit(iter_list: List[str], pattern: str = None) -> str:
+        def omit(startline: int, endline: int, pattern: str = None) -> str:
             # Remove a particular pattern from the code block
+            iter_list: List[str] = self.__caller_source.lines[startline - 1 : endline]
+            lined_block_string = str()
             logger.debug(f"OMITTING: {pattern}")
-            result = ""
+            result = str()
             cont = False  # Used to track multi line statements / continuation of a line / pattern
+            cnt = startline
             if remove_pattern:
                 for line in iter_list:
                     if (
@@ -933,11 +977,16 @@ class Debugger(Object):
                             cont = False
                         else:
                             cont = True
+                        result += "\n"
+                        lined_block_string += f"{cnt}:\n"
+                        cnt += 1
                         continue
                     result += line
+                    lined_block_string += f"{cnt}:{line}"
+                    cnt += 1
             else:
                 result = ("").join(iter_list)
-            return result
+            return result, lined_block_string
 
         try:
             if not endline:
@@ -967,8 +1016,9 @@ class Debugger(Object):
                                 )
                             endline = line + 1
                             break
-            block = omit(
-                self.__caller_source.lines[startline - 1 : endline - 1],
+            block, lined_block = omit(
+                startline,
+                endline,
                 remove_pattern,
             )
             # Get the ast of the code block
@@ -995,12 +1045,12 @@ class Debugger(Object):
             block_comments = (
                 self.script_utils.get_comments(block_ast) if block_ast else None
             )
-            return block_object(block, startline, endline, block_comments)
+            return block_object(block, startline, endline, block_comments, lined_block)
         except IndentationError or SyntaxError as e:
             logger.error(
                 f"Block startline={startline} to endline={endline} has the incorrect language syntax within it. Please select a valid language syntax block. {e} "
             )
-            return block_object(None, startline, endline, None)
+            return block_object(None, startline, endline, None, None)
 
     def __build_context(
         self,
@@ -1009,6 +1059,7 @@ class Debugger(Object):
         endline: int = None,
         block: str = None,
         block_comments: str = None,
+        lined_block: str = None,
         subject: str = None,
         output: str = None,
         error_line: int = None,
@@ -1046,6 +1097,8 @@ class Debugger(Object):
                     Context.pid.value: self.__caller_pid,
                 },
                 Context.status.value: status,
+                Context.args.value: self.__caller_args,
+                Context.command.value: self.__command,
             },
             Context.source.value: {
                 Context.startline.value: str(startline),
@@ -1057,6 +1110,8 @@ class Debugger(Object):
                 Context.language.value: self.language,
                 Context.block_comments.value: block_comments,
                 Context.source_path.value: self.__caller,
+                Context.lined_block.value: lined_block,
+                Context.source_list.value: self.__caller_source.lines,
             },
             Context.prompt.value: {
                 Context.suggestions.value: {
@@ -1137,5 +1192,6 @@ class Debugger(Object):
                         dispatch_by_last_index=False,
                     )
 
-        for mode in cls.atexit_modes + cls.on_error_modes:
+        for mode in cls.atexit_modes:  # + cls.on_error_modes:
             dispatch(mode)
+        logger.debug("Code Executed successfully. No on error mode was dispatched")
