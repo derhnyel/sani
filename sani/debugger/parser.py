@@ -15,16 +15,6 @@ from sani.utils.custom_types import (
 from sani.utils.exception import UnterminatedCommentError
 
 
-"""
-comment_parser library: https://github.com/jeanralphaviles/comment_parser/blob/master/comment_parser/parsers
-"""
-
-# from nirjas import main
-
-
-# main.rust.rustExtractor
-
-
 class BaseParser(ABC):
     """Base class for parsers."""
 
@@ -55,35 +45,96 @@ class PythonParser(BaseParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    # def extract_attributes(
+    #     self, source: io.TextIOWrapper
+    # ) -> Tuple[List[Comment], List[str], str, int, str]:
+    #     """Extracts a list of comments from the given Python script.
+
+    #     Comments are identified using the tokenize module. Does not include function,
+    #     class, or module docstrings. All comments are single line comments.
+
+    #     Args:
+    #         source: String containing source code to extract comments from.
+    #     Returns:
+    #         Python list of Comment in the order that they appear in the code.
+    #     Raises:
+    #         tokenize.TokenError
+    #     """
+    #     source: str = source.read() if isinstance(source, io.TextIOWrapper) else source
+
+    #     comments = []
+    #     source_list = []
+    #     lined_source = str()
+    #     tokens: Generator = tokenize.tokenize(io.BytesIO(source.encode()).readline)
+    #     for toknum, tokstring, tokloc, _, _ in tokens:
+    #         line = tokloc[0]
+    #         if toknum is tokenize.COMMENT:
+    #             # Removes leading '#' character.
+    #             tokstring = tokstring[1:]
+    #             comments.append(Comment(tokstring, line, False))
+    #         source_list.append(tokstring)
+    #         lined_source += f"{line}:{tokstring}"
+    #     return comments, source_list, lined_source, line, source
+
     def extract_attributes(
-        self, source: io.TextIOWrapper
+        self,
+        code: io.TextIOWrapper,
     ) -> Tuple[List[Comment], List[str], str, int, str]:
-        """Extracts a list of comments from the given Python script.
-
-        Comments are identified using the tokenize module. Does not include function,
-        class, or module docstrings. All comments are single line comments.
-
-        Args:
-            source: String containing source code to extract comments from.
-        Returns:
-            Python list of Comment in the order that they appear in the code.
-        Raises:
-            tokenize.TokenError
-        """
-        source: str = source.read() if isinstance(source, io.TextIOWrapper) else source
-        comments = []
         source_list = []
-        lined_source = str()
-        tokens: Generator = tokenize.tokenize(io.BytesIO(source.encode()).readline)
-        for toknum, tokstring, tokloc, _, _ in tokens:
-            line = tokloc[0]
-            if toknum is tokenize.COMMENT:
-                # Removes leading '#' character.
-                tokstring = tokstring[1:]
-                comments.append(Comment(tokstring, line, False))
-            source_list.append(tokstring)
-            lined_source += f"{line}:{tokstring}"
-        return comments, source_list, lined_source, line, source
+        pattern = r"""(?<!["'`])#+\s*(.*)"""
+        single_qoute = "'''"
+        not_single_syntax = '"' + single_qoute
+        double_qoute = '"""'
+        not_double_syntax = "'" + double_qoute
+        comments: List[Comment] = []
+        closing_count = 0
+        lined_source: str = str()
+        copy: bool = False
+        line_counter = 0
+        content: str = str()
+        source = str()
+        for line_number, line in enumerate(code, start=1):
+            line_counter += 1
+            syntax = (
+                single_qoute
+                if (single_qoute in line and not_single_syntax not in line)
+                else double_qoute
+                if (double_qoute in line and not_double_syntax not in line)
+                else None
+            )
+            print(syntax)
+            if syntax:
+                closing_count += 1
+                copy = True
+                if line.count(syntax) == 2:
+                    # Start and end on same line
+                    closing_count = 2
+                    content = line.replace("\n", " ")
+                    start_line = line_number
+                if closing_count % 2 == 0 and closing_count != 0:
+                    copy = False
+                    line = line[: line.rfind(syntax) + len(syntax)]
+                    # content = content + line.replace("\n", " ")
+                    content = content.strip(syntax).strip()
+                    endline = line_number
+                    comments.append(Comment(content, start_line, multiline=True))
+                    content = str()
+                    continue
+                else:
+                    start_line = line_number
+            if copy:
+                content += line.replace("\n", " ").strip()
+            else:
+                match = re.findall(pattern, line, re.I)
+                match = "".join(match)
+                if match:
+                    comment = Comment(match.strip(), line_number, multiline=False)
+                    comments.append(comment)
+            lined_source += f"{line_number}:{line}"
+            source_list.append(line)
+            source += line
+
+        return comments, source_list, lined_source, line_counter, source
 
 
 class GoParser(BaseParser):
@@ -621,7 +672,7 @@ class RustParser(BaseParser):
                 line = line[: line.rfind(end_syntax) + len(end_syntax)]
                 # content = content + line.replace("\n", " ")
                 content = content.strip(start_syntax).strip(end_syntax).strip()
-                content = content.strip(start_syntax).strip(end_syntax).strip()
+                # content = content.strip(start_syntax).strip(end_syntax).strip()
                 endline = line_number
                 comments.append(Comment(content, startline, multiline=True))
                 content = str()
