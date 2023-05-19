@@ -139,7 +139,7 @@ class GenericSaniBot(BaseBot):
         Builds the prompt for a generic Sani bot
         """
         self.code_information = self._unpack_obj(self.input)
-        self.language = self.code_information["language"]
+        self.language = self.input[ct.source.value][ct.language.value]
         self.personality = self.prompt_templates[self.mode]["personality"].format(
             self.language
         )
@@ -166,27 +166,27 @@ class GenericSaniBot(BaseBot):
         """
         return self.prompt.format()
 
+    def code_str_to_json(self, input_str, start = 1):
+        """
+        Function for turning code strings to array of objects
+        """
+        str_split = input_str.split("\n")
+        obj_array = [{'line': i + start, 'statement': line} for i, line in enumerate(str_split[:-1])]
+        return obj_array
+
     def _unpack_obj(self, input_context: Dict):
         """
         Unpacks the context dictionary containing an additional info a bot might need
         to fulfill it's instructions
         """
         prompt_data = {
-            "language": input_context[ct.source][ct.language],
-            "mode": input_context[ct.prompt][ct.mode],
             "output": input_context[ct.execution][ct.output],
             "intended action": input_context[ct.prompt][ct.suggestions][ct.subject],
-            "startline": input_context[ct.source][ct.startline],
-            "endline": input_context[ct.source][ct.endline],
-            # "full source code": input_context[ct.source][ct.code],
-            "full source code with line numbers": input_context[ct.source][
-                ct.lined_code
-            ],
-            "extracted code block from full source code with line numbers": input_context[
-                ct.source
-            ][
-                ct.lined_block
-            ],
-            # "extracted code block": input_context[ct.source][ct.block],
+            # 'full source code': self.code_str_to_json(input_context[ct.source.value][ct.code.value]),
+            # 'full source code with line numbers': input_context[ct.source.value][ct.lined_code.value],
+            'code block': self.code_str_to_json(
+                input_str = input_context[ct.source.value][ct.block.value],
+                start = int(input_context[ct.source.value][ct.startline.value])
+            )
         }
         return prompt_data

@@ -1,43 +1,51 @@
+import time
+"""
+Module docstring: This module is an example of building an automatic scraper using the Debugger class.
+"""
 from sani.debugger.debugger import Debugger
 
 # Debuggy.deactivate = False
 # Debuggy.__deactivate_hook = False
-debug = Debugger(
-    name=__name__, stdout="./example/example.txt", channel="iuio", linter="pylint"
-)
+debug = Debugger(name=__name__, stdout="example.txt", channel="iuio", linter="pylint")
 
-debug.breakpoint(mode="test", subject="build an automatic scraper")
+debug.breakpoint(mode="improve", subject="build an automatic scraper")
 
 
 # SANI:mode=fix:subject=This is a comment:startline=11:endline=18
 class Test:
+    """Class representing a Test object."""
     def __init__(self):
         self.name = "Test"
 
     @debug.wrap(mode="document")
     def test1(self):
+        """Test method 1 with a documentation block."""
         print("A documention block within Test class function test1 called with wrap")
         return self.name
 
     # debuggy_end_breakpoint
     @debug.wrap(mode="improve")
     def test2(self):
+        """Test method 2 with an improvement block."""
         print("An improve block within Test class function test2 called with wrap")
         # raising an exception
         try:
-            raise Exception("I Raised this exception . Now handle it and fix me ..")
-        except Exception as e:
+            raise ValueError("I Raised this exception. Now handle it and fix me.")
             print("I caught this myself")
+        except Exception as e:
+            print(e)
 
     @staticmethod
     @debug.wrap(mode="ai_fn")
     def test3():
+        """Test method 3 with a test block."""
         print("A test block within Test class function test3 called with wrap ")
         # raising an exception
         # raise Exception("I Raised this exception . Now handle it and fix me ..")
 
     @debug.wrap(mode="fix")
     def test4(self):
+        """Test method 4 for testing the fix mode."""
         print("I am here for testing the fix mode")
         return self
 

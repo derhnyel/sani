@@ -58,6 +58,8 @@ The data will have the following fields:
 6. intended action: the task the code was written to perform.
 7. code block: The block of code that needs to be fixed. An array of objects. Each object has a line field and statement \
 field.
+8. full source code: the complete source code with line numbers included. The 'code block' field is a subset of this field.\
+  Also an array of objects. Each object has a line field and statement field.
 Ignore any fields outside of those specified above.
 Here's an example of what the input data could look like:
 {
@@ -74,6 +76,23 @@ Here's an example of what the input data could look like:
     {'line': 11, 'statement': ''},
     {'line': 12, 'statement': 'print(a + b)'},
     {'line': 13, 'statement': ''}
+  ],
+  'full source code': [
+    {'line': 1, 'statement': 'from sani.debugger.debugger import Debugger'},
+    {'line': 2, 'statement': ''},
+    {'line': 3, 'statement': ''},
+    {'line': 4, 'statement': 'debug = Debugger(__name__,stdout=\"test.txt\", channel=\"io\")'},
+    {'line': 5, 'statement': ''},
+    {'line': 6, 'statement': 'debug.breakpoint(mode=\"fix\", subject=\"concatenate two strings\")'},
+    {'line': 7, 'statement': ''},
+    {'line': 8, 'statement': 'a = 3'},
+    {'line': 9, 'statement': ''},
+    {'line': 10, 'statement': 'b = "foo"'},
+    {'line': 11, 'statement': ''},
+    {'line': 12, 'statement': 'print(a + b)'},
+    {'line': 13, 'statement': ''},
+    {'line': 14, 'statement': 'debug.debugger_end_breakpoint()'},
+    {'line': 15, 'statement': ''},
   ]
 }
 
@@ -88,10 +107,10 @@ Here's the input data:
 """
 
 FIX_MODE_RESPONSE_FORMAT = """
-All code statements must be correctly indented when making replacements or inserting.
+All code statements must be correctly indented to match the full source code line for line when making replacements or inserting.
 Your response must be in JSON format only and must only include the following fields:
 explanation: A short explanation about what went wrong
-operations: A list of operations that should be executed on the code block. An operation is an object \
+operations: A list of operations that should be executed on the full source code. An operation is an object \
 and should have the following fields:
 1. type: The type of operation to be performed. Must be one of the following:
   a. insertAfter: This operation indicates that a code statement should be inserted after a line of code.

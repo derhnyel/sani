@@ -24,14 +24,11 @@ class GenericSaniPrompt(GenericPromptTemplateBase):
             raise ValueError("bot_information must be a dictionary")
 
         template_str = """
-        # INFORMATION
-        Here are the details you need to know about the code you are working on:
         {% for key, value in information.items() %}
-        Here is the {{ key }}:\n`{{ value }}`\n
+        {{ key }}: {{ value }},
         {% endfor %}
-        Use the information provided above to complete the task.
         """
-        return Template(template_str).render(information=bot_info)
+        return Template(template_str, lstrip_blocks=True, trim_blocks=True).render(information=bot_info)
 
     def format(self):
         """
@@ -39,7 +36,7 @@ class GenericSaniPrompt(GenericPromptTemplateBase):
         """
         template = Template(self.template_str)
         kwargs = self.dict()
-        kwargs.pop("bot_information")
+        # kwargs.pop("bot_information")
         return template.render(**kwargs)
 
     @property
