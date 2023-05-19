@@ -80,6 +80,7 @@ class PythonParser(BaseParser):
         self,
         code: io.TextIOWrapper,
     ) -> Tuple[List[Comment], List[str], str, int, str]:
+        code: str = code.read()
         source_list = []
         pattern = r"""(?<!["'`])#+\s*(.*)"""
         single_qoute = "'''"
