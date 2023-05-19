@@ -774,10 +774,10 @@ class Debugger(Object):
             and cls.language == Language.python
         ):
             traceback_nodes: List[str] = traceback.format_tb(traceback_n)
-            traceback_node = traceback_nodes[-1]
-            line_number: int = int(
-                re.search(r"""line (\d+)""", traceback_node).group(1)
-            )
+            # traceback_node = traceback_nodes[-1]
+            # line_number: int = int(
+            #     re.search(r"""line (\d+)""", traceback_node).group(1)
+            # )
             traceback_n = ("").join(traceback_nodes)
 
         process = process or multiprocessing.current_process()
